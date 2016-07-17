@@ -261,6 +261,60 @@ def _commit_image(docker_client, container_id, author=None, configs=None, tag=No
     return str(image_id[7:19])
 
 
+def _copy_build_context(docker_client, container_id, step_config):
+    """
+    Copies the build context to the running container. The build context can be either one or many
+    paths that can be copied into the container
+    """
+
+    files_copied = False
+
+    if "BUILDCONTEXT" in step_config:
+
+        log.info("Copying building context to the container")
+        files_copied = True
+
+        if isinstance(step_config["BUILDCONTEXT"], str):
+
+            _copy(
+                docker_client,
+                container_id,
+                step_config["BUILDCONTEXT"],
+                os.path.join(BUILD_CONTEXT_DST_PATH, "")
+            )
+
+        elif isinstance(step_config["BUILDCONTEXT"], list):
+
+            for copy_details in step_config["BUILDCONTEXT"]:
+
+                dst = ""
+
+                if "DST" in copy_details:
+                    dst = "." + copy_details["DST"] if copy_details["DST"].startswith("/") \
+                          else copy_details["DST"]
+
+                dst = os.path.join(BUILD_CONTEXT_DST_PATH, dst)
+
+                if not os.path.normpath(dst).startswith(BUILD_CONTEXT_DST_PATH):
+                    raise InvalidDockerBuilderFile(
+                        "Invalid Build Context 'DST' property {!r}, destination path must be "
+                        "within the Build Context folder".format(
+                            copy_details["DST"]
+                        )
+                    )
+
+                _copy(docker_client, container_id, copy_details["SRC"], dst)
+
+        else:
+
+            raise InvalidDockerBuilderConfigFile(
+                "BUILDCONTEXT is invalid, context must be either a String or a List of SRC and DST "
+                "objects"
+            )
+
+    return files_copied
+
+
 def _build(docker_client, args, build_config, step_config, from_image):
     """
     Builds the image for the given step
@@ -290,14 +344,7 @@ def _build(docker_client, args, build_config, step_config, from_image):
         container_id = _create_container(docker_client, from_image)
 
         # determine if there is a build context specified
-        if "BUILDCONTEXT" in step_config:
-            log.info("Copying building context to the container")
-            _copy(
-                docker_client,
-                container_id,
-                os.path.normcase(step_config["BUILDCONTEXT"]),
-                BUILD_CONTEXT_DST_PATH + "/"
-            )
+        build_context_populated = _copy_build_context(docker_client, container_id, step_config)
 
         # execute the commands to make the necessary changes
         if "RUN" in step_config:
@@ -311,7 +358,7 @@ def _build(docker_client, args, build_config, step_config, from_image):
             )
 
         # clean up the build context if one was created
-        if "BUILDCONTEXT" in step_config:
+        if build_context_populated:
             log.info("Cleaning up container from build context")
             _run_command(
                 docker_client,
