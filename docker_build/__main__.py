@@ -1,7 +1,7 @@
 """
 Build tool to create Docker images. This is another implementation of the builder different than the
-one provided by the official repository. This tool is intended to give the user more flexibility to
-the creation of the images as opposed to what is being provided by the build command provided in
+one provided by the official repository. This tool is intended to give the user more flexibility for
+the creation of an image as opposed to what is being provided by the build command provided in
 docker
 """
 from __future__ import print_function
@@ -18,17 +18,17 @@ import base64
 import copy
 
 
-from docker_builder.catalog import Configuration
-from docker_builder.exception import \
-    DockerBuilderException, \
-    DockerBuilderConfigFileNotFound, \
-    InvalidDockerBuilderConfigFile, \
-    DockerBuilderFileNotFound, \
-    InvalidDockerBuilderFile, \
+from docker_build.catalog import Configuration
+from docker_build.exception import \
+    DockerBuildException, \
+    DockerBuildConfigFileNotFound, \
+    InvalidDockerBuildConfigFile, \
+    DockerBuildFileNotFound, \
+    InvalidDockerBuildFile, \
     InvalidDockerBuildOptionValue, \
-    MissingDockerBuilderArgument, \
+    MissingDockerBuildArgument, \
     CommandExecutionError
-from docker_builder.util import \
+from docker_build.util import \
     PutAction, \
     parse_key_value_option
 from yaml.parser import ParserError
@@ -39,16 +39,16 @@ from yaml.parser import ParserError
 BUILD_CONTEXT_DST_PATH = "/tmp/build-context"
 
 # the default path for the configuration file
-CONFIG_FILE_PATH = "~/.docker/builder-config.yml"
+CONFIG_FILE_PATH = "~/.docker/build-config.yml"
 
-# the logger for the docker builder tool
-log = logging.getLogger("docker_builder")
+# the logger for the docker build tool
+log = logging.getLogger("docker_build")
 
 
 def _parse_config(configs, parsed_configs, configuration_option):
     """
     Validates the given configuration and if required converts the configuration from the format
-    supported by the Docker Builder tool to the one understood by Docker Daemon.
+    supported by the Docker Build tool to the one understood by Docker Daemon.
     """
     if configuration_option.name in configs:
 
@@ -158,7 +158,7 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
     Runs the given command in the container
     """
     # the command will be executed using shell binary. Eventually this will be changed to pass it in
-    # as a builder option
+    # as a build option
     cmd = [
         "/bin/sh",
         "-c",
@@ -296,7 +296,7 @@ def _copy_build_context(docker_client, container_id, step_config):
                 dst = os.path.join(BUILD_CONTEXT_DST_PATH, dst)
 
                 if not os.path.normpath(dst).startswith(BUILD_CONTEXT_DST_PATH):
-                    raise InvalidDockerBuilderFile(
+                    raise InvalidDockerBuildFile(
                         "Invalid Build Context 'DST' property {!r}, destination path must be "
                         "within the Build Context folder".format(
                             copy_details["DST"]
@@ -307,7 +307,7 @@ def _copy_build_context(docker_client, container_id, step_config):
 
         else:
 
-            raise InvalidDockerBuilderConfigFile(
+            raise InvalidDockerBuildConfigFile(
                 "BUILDCONTEXT is invalid, context must be either a String or a List of SRC and DST "
                 "objects"
             )
@@ -427,7 +427,7 @@ def _parse_arguments(loaded_args, args):
         # if on the other hand the argument is optional confirm that a default was given
         if "OPTIONAL" in options and not options["OPTIONAL"]:
             if name not in args:
-                raise MissingDockerBuilderArgument(
+                raise MissingDockerBuildArgument(
                     "Build argument {!r} is not optional but no value was passed in for the "
                     "arguments".format(
                         name
@@ -435,7 +435,7 @@ def _parse_arguments(loaded_args, args):
                 )
         else:
             if "DEFAULT" not in options:
-                raise MissingDockerBuilderArgument(
+                raise MissingDockerBuildArgument(
                     "Build argument {!r} is optional but no default value is specified".format(
                         name
                     )
@@ -480,8 +480,8 @@ def _parse_config_file(config_file_path):
     # determine if the config file exists, only raise an error if the given config is not the
     # default one
     if not file_exists and config_file_path != CONFIG_FILE_PATH:
-        raise DockerBuilderConfigFileNotFound(
-            "Docker Builder configuration file not found at {!r}, please make sure that the right "
+        raise DockerBuildConfigFileNotFound(
+            "Docker Build configuration file not found at {!r}, please make sure that the right "
             "path was specified".format(
                 config_file_path
             )
@@ -491,8 +491,8 @@ def _parse_config_file(config_file_path):
         try:
             config_file = yaml.load(open(expanded_path))
         except ParserError as ex:
-            raise InvalidDockerBuilderConfigFile(
-                "Docker Builder configuration file is invalid. File failed with error {!r} at {!r}"
+            raise InvalidDockerBuildConfigFile(
+                "Docker Build configuration file is invalid. File failed with error {!r} at {!r}"
                 .format(
                     ex.problem,
                     str(ex.problem_mark)
@@ -509,8 +509,8 @@ def _parse_build_file(build_file_path, args=None):
 
     # determine if the build file exists
     if not os.path.exists(expanded_path):
-        raise DockerBuilderFileNotFound(
-            "Docker Builder build file not found at {!r}, please make sure that the right "
+        raise DockerBuildFileNotFound(
+            "Build file not found at {!r}, please make sure that the right "
             "path was specified".format(
                 build_file_path
             )
@@ -526,12 +526,12 @@ def _parse_build_file(build_file_path, args=None):
         return yaml.load(build_file)
 
     except KeyError as ex:
-        raise InvalidDockerBuilderFile(
-            "Docker Builder build file is invalid. Argument {!r} is not defined".format(ex.message)
+        raise InvalidDockerBuildFile(
+            "Build file is invalid. Argument {!r} is not defined".format(ex.message)
         )
     except ParserError as ex:
-        raise InvalidDockerBuilderFile(
-            "Docker Builder build file is invalid. File failed with error {!r} at {!r}".format(
+        raise InvalidDockerBuildFile(
+            "Build file is invalid. File failed with error {!r} at {!r}".format(
                 ex.problem,
                 str(ex.problem_mark)
             )
@@ -540,7 +540,7 @@ def _parse_build_file(build_file_path, args=None):
 
 def main(argv=None):
     """
-    Main function for invoking the Docker Builder tool
+    Main function for invoking the Docker Build tool
     """
     # Parse argument list
     parser = argparse.ArgumentParser(
@@ -559,7 +559,7 @@ def main(argv=None):
         "-f", "--build-file",
         dest="build_file_path",
         type=str,
-        default="./docker-builder.yml"
+        default="./docker-build.yml"
     )
     parser.add_argument(
         "-c", "--config-file",
@@ -604,7 +604,7 @@ def main(argv=None):
 
         # determine from which image to start
         if "FROM" not in build_configs:
-            raise InvalidDockerBuilderFile("FROM is not optional please confirm the build file")
+            raise InvalidDockerBuildFile("FROM is not optional please confirm the build file")
 
         from_image = build_configs["FROM"]
 
@@ -623,7 +623,7 @@ def main(argv=None):
                 from_image
             )
 
-    except DockerBuilderException as ex:
+    except DockerBuildException as ex:
         log.error("Build failed due to error : {}".format(ex))
 
     except Exception as ex:

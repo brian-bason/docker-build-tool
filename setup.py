@@ -10,23 +10,18 @@ def read(*paths):
 
 setup(
 
-    name='docker-builder',
-    version='0.1.0',
+    name='docker-build-tool',
+    version='0.1.2.dev0',
 
-    description='Build tool for creating Docker images',
-    long_description=(read('README.md')),
+    description='Build tool for creating Docker Images',
 
-    url='https://bitbucket.org/softboxsolutions/docker-builder.git',
+    url='https://bitbucket.org/softboxsolutions/docker-build.git',
     author='Brian Bason',
     author_email='brianbason@gmail.com',
+    classifiers=[],
 
     packages=find_packages(exclude=['test*']),
     include_package_data=True,
-
-    classifiers=[
-        # Ensure we never upload to PyPI by providing an invalid classifier
-        'Private :: Do Not Upload'
-    ],
 
     # List run-time dependencies here.  These will be installed by pip when
     # your project is installed. For an analysis of "install_requires" vs pip's
@@ -56,7 +51,7 @@ setup(
     # pip to create the appropriate form of executable for the target platform.
     entry_points={
         'console_scripts': [
-            'docker_build=docker_builder.__main__:main'
+            'docker-build=docker_build.__main__:main'
         ]
     }
 

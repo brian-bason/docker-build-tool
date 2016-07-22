@@ -19,5 +19,5 @@ root_logger.addHandler(handler)
 root_logger.setLevel(logging.WARN)
 
 # set the logger for the builder
-docker_builder_logger = logging.getLogger("docker_builder")
-docker_builder_logger.setLevel(logging.INFO)
+docker_build_logger = logging.getLogger("docker_build")
+docker_build_logger.setLevel(logging.INFO)

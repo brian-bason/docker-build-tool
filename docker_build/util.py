@@ -1,5 +1,5 @@
 """
-Utility functions and classes that can be used across the Docker builder module
+Utility functions and classes that can be used across the Docker Build module
 """
 
 import types
