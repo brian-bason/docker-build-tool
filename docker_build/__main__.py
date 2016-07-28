@@ -419,9 +419,7 @@ def _build(docker_client, args, build_config, step_config, from_image):
 
 def _parse_arguments(loaded_args, args):
 
-    for arg in loaded_args:
-
-        name, options = arg.popitem()
+    for name, options in loaded_args.items():
 
         # if an argument is set as not optional confirm that the value for the argument is known.
         # if on the other hand the argument is optional confirm that a default was given
