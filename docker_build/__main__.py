@@ -611,6 +611,11 @@ def main(argv=None):
         if command_line_args.tag:
             build_configs["TAG"] = command_line_args.tag
 
+        # change the working directory to the path where the build file is located before commencing
+        # the build. This will make sure that all the paths in the build file are relative to the
+        # build file itself
+        os.chdir(os.path.dirname(command_line_args.build_file_path))
+
         # go through the steps to create the necessary images
         for step_config in build_configs["STEPS"]:
             from_image = _build(
