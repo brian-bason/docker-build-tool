@@ -419,6 +419,9 @@ def _build(docker_client, args, build_config, step_config, from_image):
 
 def _parse_arguments(loaded_args, args):
 
+    if not isinstance(loaded_args, dict):
+        raise ValueError("Arguments must be a list of key value pairs")
+
     for name, options in loaded_args.items():
 
         # if an argument is set as not optional confirm that the value for the argument is known.
@@ -456,10 +459,26 @@ def _load_arguments(line_args, build_configs, common_configs):
     args = copy.deepcopy(line_args)
 
     if "ARGS" in build_configs:
-        _parse_arguments(build_configs["ARGS"], args)
+        try:
+            _parse_arguments(build_configs["ARGS"], args)
+        except Exception as ex:
+            raise InvalidDockerBuildFile(
+                "Build File contains invalid argument declaration, parsing of file failed with "
+                "error - {!s}".format(
+                    ex
+                )
+            )
 
     if "ARGS" in common_configs:
-        _parse_arguments(common_configs["ARGS"], args)
+        try:
+            _parse_arguments(common_configs["ARGS"], args)
+        except Exception as ex:
+            raise InvalidDockerBuildConfigFile(
+                "Config File contains invalid argument declaration, parsing of file failed with "
+                "error - {!s}".format(
+                    ex
+                )
+            )
 
     # inject the build context path (path inside the container) that can be used for reference
     # during the build process
