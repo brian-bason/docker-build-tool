@@ -285,7 +285,7 @@ def _commit_image(docker_client, container_id, author=None, configs=None, tag=No
 
     # add the tag that should be used for the image to be created if any
     if tag:
-        params["repository"], params["tag"] = _get_docker_image_name_parts
+        params["repository"], params["tag"] = _get_docker_image_name_parts(tag)
 
     # populate all other optional parameters
     if author:
