@@ -8,6 +8,7 @@ from __future__ import print_function
 
 import argparse
 import docker
+import json
 import yaml
 import logging
 import types
@@ -17,7 +18,7 @@ import tarfile
 import base64
 import copy
 
-
+from docker import errors
 from docker_build.catalog import Configuration
 from docker_build.exception import \
     DockerBuildException, \
@@ -27,7 +28,8 @@ from docker_build.exception import \
     InvalidDockerBuildFile, \
     InvalidDockerBuildOptionValue, \
     MissingDockerBuildArgument, \
-    CommandExecutionError
+    CommandExecutionError, \
+    DockerImageNotFound
 from docker_build.util import \
     PutAction, \
     parse_key_value_option
@@ -72,6 +74,37 @@ def _inspect_image(docker_client, image):
     return docker_client.inspect_image(image)
 
 
+def _pull_image(docker_client, image_name):
+    """
+    Pulls the Docker Image from the remote Docker Registry
+    """
+    status_log = None
+    refresh_count = 1
+    repository, tag = _get_docker_image_name_parts(image_name)
+    params = {
+        "repository": repository,
+        "tag": tag,
+        "stream": True
+    }
+
+    for output in docker_client.pull(**params):
+        details = json.loads(output)
+
+        if "status" in details:
+            if not status_log:
+                log.info(details["status"])
+            else:
+                print("#" * refresh_count, end="\r")
+                refresh_count = refresh_count + 1 if refresh_count <= 50 else 1
+
+            status_log = details["status"]
+
+        if "error" in details:
+            raise DockerImageNotFound(details["error"])
+
+    print("", end="\r")
+    log.info(status_log)
+
 def _create_container(docker_client, image):
     """
     Create a container that will be used to execute the commands and create the new required image.
@@ -86,8 +119,20 @@ def _create_container(docker_client, image):
         "image": image
     }
 
-    # create the container that will be used to run the details for the image
-    container = docker_client.create_container(**params)
+    def create_container_with_auto_pull(remote_download_tried=False):
+        # create the container that will be used to run the details for the image
+        try:
+            return docker_client.create_container(**params)
+        except errors.NotFound:
+            if not remote_download_tried:
+                log.info("Image {!r} not found locally, trying remote registry".format(image))
+                _pull_image(docker_client, image)
+                return create_container_with_auto_pull(True)
+            else:
+                raise DockerImageNotFound("Image {!r} could not be found".format(image))
+
+    # create the container
+    container = create_container_with_auto_pull()
 
     if "Warnings" in container and container["Warnings"]:
         log.warn("Created container contains warnings {!r}".format(container["Warnings"]))
@@ -240,10 +285,7 @@ def _commit_image(docker_client, container_id, author=None, configs=None, tag=No
 
     # add the tag that should be used for the image to be created if any
     if tag:
-        tag_parts = tag.split(":")
-        params["repository"] = tag_parts[0]
-        if len(tag_parts) > 1:
-            params["tag"] = tag_parts[1]
+        params["repository"], params["tag"] = _get_docker_image_name_parts
 
     # populate all other optional parameters
     if author:
@@ -556,6 +598,17 @@ def _parse_build_file(build_file_path, args=None):
                 str(ex.problem_mark)
             )
         )
+
+
+def _get_docker_image_name_parts(image_name):
+    """
+    Gets the parts of the image name. The name is split into two parts, the repository and the tag
+    """
+    image_name_parts = image_name.split(":")
+    return (
+        image_name_parts[0],
+        image_name_parts[1] if len(image_name_parts) > 1 else "latest"
+    )
 
 
 def main(argv=None):
