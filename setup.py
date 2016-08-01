@@ -11,7 +11,7 @@ def read(*paths):
 setup(
 
     name='docker-build-tool',
-    version='0.2.2.dev0',
+    version='0.3.0',
 
     description='Build tool for creating Docker Images',
 

@@ -82,7 +82,7 @@ def _create_container(docker_client, image):
     params = {
         "tty": True,
         "detach": True,
-        "entrypoint": "bash",
+        "entrypoint": "sh",
         "image": image
     }
 
@@ -315,7 +315,7 @@ def _copy_build_context(docker_client, container_id, step_config):
     return files_copied
 
 
-def _build(docker_client, args, build_config, step_config, from_image):
+def _build(docker_client, args, build_config, step_config, from_image, should_remove_container):
     """
     Builds the image for the given step
 
@@ -325,6 +325,8 @@ def _build(docker_client, args, build_config, step_config, from_image):
     :param step_config: The configurations of the step being build with this build process
     :param from_image: The identifier or tag of the image to be used as the base for the image being
                        created
+    :param should_remove_container: Indicates if the container should be removed on success or
+                                    failure build
 
     :returns: The identifier of the image that was created
 
@@ -333,6 +335,7 @@ def _build(docker_client, args, build_config, step_config, from_image):
     :type build_config: dict
     :type step_config: dict
     :type from_image: str
+    :type should_remove_container: bool
     :rtype: str
     """
     container_id = None
@@ -412,7 +415,7 @@ def _build(docker_client, args, build_config, step_config, from_image):
     finally:
 
         # if a container was created remove it to clean up
-        if container_id:
+        if container_id and should_remove_container:
             log.info("Cleaning up container")
             docker_client.remove_container(container=container_id, force=True)
 
@@ -589,6 +592,14 @@ def main(argv=None):
         dest="tag",
         type=str
     )
+    parser.add_argument(
+        "--keep",
+        dest="keep_containers",
+        action='store_true',
+        help="Keeps the intermediate containers after a build. The default behaviour is to remove "
+             "all created containers but sometimes it is useful to leave them for debugging "
+             "purposes"
+    )
 
     try:
 
@@ -642,7 +653,8 @@ def main(argv=None):
                 build_args,
                 build_configs,
                 step_config,
-                from_image
+                from_image,
+                not command_line_args.keep_containers
             )
 
     except DockerBuildException as ex:
