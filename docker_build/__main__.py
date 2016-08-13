@@ -17,6 +17,7 @@ import io
 import tarfile
 import base64
 import copy
+import sys
 
 from docker import errors
 from docker_build.catalog import Configuration
@@ -742,13 +743,16 @@ def main(argv=None):
 
     except KeyboardInterrupt:
         log.info("Docker Build shutdown by user")
+        return 130
 
     except DockerBuildException as ex:
         log.error("Build failed due to error : {}".format(ex))
+        return 1
 
     except Exception as ex:
         log.exception("Unexpected error during build due to error : {}".format(ex))
+        return 1
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
