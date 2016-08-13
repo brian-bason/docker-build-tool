@@ -12,8 +12,8 @@ class Configuration(Enum):
     """
     Details of a configuration used to set a Docker image
     """
-    CMD = ("Cmd", [types.ListType, types.StringType])
-    ENTRYPOINT = ("Entrypoint", [types.ListType, types.StringType])
+    CMD = ("Cmd", [types.ListType, types.StringType, types.NoneType])
+    ENTRYPOINT = ("Entrypoint", [types.ListType, types.StringType, types.NoneType])
     ENV = ("Env", [types.DictType], convert_to_list)
     EXPOSE = ("ExposedPorts", [types.DictType])
     LABELS = ("Labels", [types.DictType])

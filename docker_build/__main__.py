@@ -105,6 +105,7 @@ def _pull_image(docker_client, image_name):
     print("", end="\r")
     log.info(status_log)
 
+
 def _create_container(docker_client, image):
     """
     Create a container that will be used to execute the commands and create the new required image.
@@ -115,9 +116,14 @@ def _create_container(docker_client, image):
     params = {
         "tty": True,
         "detach": True,
-        "entrypoint": "sh",
+        "command": "/bin/sh",
         "image": image
     }
+
+    # if the image that the container is being started from has an entry point overwrite it to clear
+    # the entry point
+    if _inspect_image(docker_client, image)["Config"]["Entrypoint"]:
+        params["entrypoint"] = []
 
     def create_container_with_auto_pull(remote_download_tried=False):
         # create the container that will be used to run the details for the image
@@ -428,18 +434,21 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
         # determine if it is the last build step in the process
         is_last_build_step = step_config == build_config["STEPS"][-1]
 
-        # get the entry point of the image that was used as the base image
-        entry_point = _inspect_image(docker_client, from_image)["Config"]["Entrypoint"]
+        # get the configs of the image that was used as the base image
+        image_configs = _inspect_image(docker_client, from_image)["Config"]
 
         # build the configuration that will be set for the image being created
         configs = step_config["CONFIG"] if "CONFIG" in step_config else {}
 
-        # if the entry point is not being over written by a specific configuration of the new image
-        # being created set it to the entry point of the from image. This is being done as the
-        # container which was created from the base images is overwriting the entry point to force
-        # the start of bash in the container
+        # if the command and entry point are not being over written by a specific configuration of
+        # the new image being created set the command and / or entry point of the from image. This
+        # is being done as the container which was created from (the base images) is overwriting the
+        # command and entry point to force the start of shell in the container
+        if "CMD" not in configs:
+            configs["CMD"] = image_configs["Cmd"] or []
+
         if "ENTRYPOINT" not in configs:
-            configs["ENTRYPOINT"] = entry_point
+            configs["ENTRYPOINT"] = image_configs["Entrypoint"]
 
         image_id = _commit_image(
             docker_client,
