@@ -71,16 +71,28 @@ def _inspect_image(docker_client, image):
     """
     Inspect the details of the image returning back the full details of that image
     """
+    details = None
 
-    return docker_client.inspect_image(image)
+    try:
+        details = docker_client.inspect_image(image)
+    except errors.NotFound:
+        pass
+
+    return details
 
 
 def _inspect_container(docker_client, container):
     """
     Inspect the details of the container returning back the full details of that container
     """
+    details = None
 
-    return docker_client.inspect_container(container)
+    try:
+        details = docker_client.inspect_container(container)
+    except errors.NotFound:
+        pass
+
+    return details
 
 
 def _pull_image(docker_client, image_name):
@@ -131,7 +143,8 @@ def _create_container(docker_client, image):
 
     # if the image that the container is being started from has an entry point overwrite it to clear
     # the entry point
-    if _inspect_image(docker_client, image)["Config"]["Entrypoint"]:
+    details = _inspect_image(docker_client, image)
+    if details and details["Config"]["Entrypoint"]:
         params["entrypoint"] = []
 
     def create_container_with_auto_pull(remote_download_tried=False):
