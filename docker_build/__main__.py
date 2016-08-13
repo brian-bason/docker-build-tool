@@ -68,10 +68,18 @@ def _parse_config(configs, parsed_configs, configuration_option):
 
 def _inspect_image(docker_client, image):
     """
-    Inspect the details of the image returning back the full details of the given image
+    Inspect the details of the image returning back the full details of that image
     """
 
     return docker_client.inspect_image(image)
+
+
+def _inspect_container(docker_client, container):
+    """
+    Inspect the details of the container returning back the full details of that container
+    """
+
+    return docker_client.inspect_container(container)
 
 
 def _pull_image(docker_client, image_name):
@@ -309,6 +317,19 @@ def _commit_image(docker_client, container_id, author=None, configs=None, tag=No
     return str(image_id[7:19])
 
 
+def _remove_container(docker_client, container_id):
+    """
+    Removes the container
+    """
+    # determine if the container is paused first, if it is first un-pause it before trying to remove
+    # the container
+    if _inspect_container(docker_client, container_id)["State"]["Paused"]:
+        docker_client.unpause(container=container_id)
+
+    # remove the container
+    docker_client.remove_container(container=container_id, force=True)
+
+
 def _copy_build_context(docker_client, container_id, step_config):
     """
     Copies the build context to the running container. The build context can be either one or many
@@ -468,7 +489,7 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
         # if a container was created remove it to clean up
         if container_id and should_remove_container:
             log.info("Cleaning up container")
-            docker_client.remove_container(container=container_id, force=True)
+            _remove_container(docker_client, container_id)
 
 
 def _parse_arguments(loaded_args, args):
@@ -718,6 +739,9 @@ def main(argv=None):
                 from_image,
                 not command_line_args.keep_containers
             )
+
+    except KeyboardInterrupt:
+        log.info("Docker Build shutdown by user")
 
     except DockerBuildException as ex:
         log.error("Build failed due to error : {}".format(ex))
