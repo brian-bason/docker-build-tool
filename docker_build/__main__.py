@@ -21,6 +21,7 @@ import sys
 
 from docker import errors
 from docker_build.catalog import Configuration
+from docker_build.logger import ConsoleLogger
 from docker_build import exception
 from docker_build.util import \
     PutAction, \
@@ -221,74 +222,65 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
     """
     Runs the given command in the container
     """
-    # the command will be executed using shell binary. Eventually this will be changed to pass it in
-    # as a build option
-    cmd = [
-        "/bin/sh",
-        "-c",
-        ""
+
+    def execute_instructions(instruction_list, variable_list, logger=None):
+        """
+        Executes all the given instructions against the container
+        """
+
+        # execute each instruction against the container
+        for index, instruction in enumerate(instruction_list):
+
+            # execute the instruction
+            execute = docker_client.exec_create(
+                container=container_id,
+                cmd=[
+                    "/bin/sh",
+                    "-c",
+                    " && ".join(variable_list + [instruction])
+                ],
+                user="root"
+            )
+
+            stream = docker_client.exec_start(
+                exec_id=execute["Id"],
+                stream=True
+            )
+
+            # display whatever is being printed to the stdout of the container
+            for log_stream in stream:
+                if logger:
+                    logger.log(log_stream[:-1])
+
+            # confirm that the command finished with no error
+            exit_code = docker_client.exec_inspect(execute["Id"])["ExitCode"]
+
+            if exit_code:
+                raise exception.CommandExecutionError(
+                    "Instruction (index: {index}) {instruction!r} failed with exit code "
+                    "[{exit_code}]"
+                    .format(
+                        index=index + 1,
+                        instruction=instruction if len(instruction) <= 30
+                        else "{}...".format(instruction[:30]),
+                        exit_code=exit_code
+                    )
+                )
+
+    # the list of variables that will be used during the execution of each command
+    environment_variables = [
+        "export {name}={value}".format(name=name, value=value)
+        for name, value in args.items()
     ]
 
-    # insert all the build arguments as environment variables for the command being executed
-    for name, value in args.items():
-        cmd[2] += "export {name}={value} && ".format(name=name, value=value)
+    # the list of instructions to execute against the container
+    instructions = command if isinstance(command, types.ListType) else [command]
 
-    # keep track of how much of the command is actually the list of arguments being passed as
-    # environment variables. This is required if an error is raised during the execution of the
-    # command
-    args_len = len(cmd[2])
-
-    # insert the command that is to be executed after the list of variables
-    if isinstance(command, types.ListType):
-        cmd[2] += " ".join(command)
+    if show_logs:
+        with ConsoleLogger("Start of Container Logs") as console_log:
+            execute_instructions(instructions, environment_variables, console_log)
     else:
-        cmd[2] += command
-
-    # execute the command in the container
-    execute = docker_client.exec_create(
-        container=container_id,
-        cmd=cmd,
-        user="root"
-    )
-
-    stream = docker_client.exec_start(
-        exec_id=execute["Id"],
-        stream=True
-    )
-
-    # print the start of the log to keep a clear indication of the start of the container logs
-    if show_logs:
-        print(
-            "************************** Start of Container Logs **************************\n"
-        )
-
-    # display whatever is being printed to the stdout of the container
-    last_log_entry = ""
-    for log_stream in stream:
-        if show_logs:
-            print(log_stream, end="")
-            last_log_entry = log_stream
-
-    # print the end of logs line
-    if show_logs:
-        print(
-            "\n{}*****************************************************************************"
-            .format(
-                "" if last_log_entry[-1:] == "\n" else "\n"
-            )
-        )
-
-    # confirm that the command finished with no error
-    exit_code = docker_client.exec_inspect(execute["Id"])["ExitCode"]
-
-    if exit_code:
-        raise exception.CommandExecutionError(
-            "Command {!r} failed with exit code [{}]".format(
-                cmd[2][args_len:] if len(cmd[2]) - args_len < 30 else
-                "{}...".format(cmd[2][args_len:args_len + 30]),
-                exit_code
-            )
-        )
+        execute_instructions(instructions, environment_variables)
 
 
 def _commit_image(docker_client, container_id, author=None, configs=None, tag=None):
