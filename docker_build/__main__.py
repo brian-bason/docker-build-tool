@@ -21,16 +21,7 @@ import sys
 
 from docker import errors
 from docker_build.catalog import Configuration
-from docker_build.exception import \
-    DockerBuildException, \
-    DockerBuildConfigFileNotFound, \
-    InvalidDockerBuildConfigFile, \
-    DockerBuildFileNotFound, \
-    InvalidDockerBuildFile, \
-    InvalidDockerBuildOptionValue, \
-    MissingDockerBuildArgument, \
-    CommandExecutionError, \
-    DockerImageNotFound
+from docker_build import exception
 from docker_build.util import \
     PutAction, \
     parse_key_value_option
@@ -121,7 +112,7 @@ def _pull_image(docker_client, image_name):
             status_log = details["status"]
 
         if "error" in details:
-            raise DockerImageNotFound(details["error"])
+            raise exception.DockerImageNotFound(details["error"])
 
     print("", end="\r")
     log.info(status_log)
@@ -157,7 +148,7 @@ def _create_container(docker_client, image):
                 _pull_image(docker_client, image)
                 return create_container_with_auto_pull(True)
             else:
-                raise DockerImageNotFound("Image {!r} could not be found".format(image))
+                raise exception.DockerImageNotFound("Image {!r} could not be found".format(image))
 
     # create the container
     container = create_container_with_auto_pull()
@@ -191,7 +182,7 @@ def _copy(docker_client, container_id, source, destination):
     # confirm that the right combination of source to destination is specified
     # the only invalid option is if the source is a directory and the destination is a file
     if is_src_dir and not is_dst_dir:
-        raise InvalidDockerBuildOptionValue(
+        raise exception.InvalidDockerBuildOptionValue(
             "Invalid copy destination {!r}, path must be a folder since source {!r} ia a folder"
             .format(destination, source)
         )
@@ -291,7 +282,7 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
     exit_code = docker_client.exec_inspect(execute["Id"])["ExitCode"]
 
     if exit_code:
-        raise CommandExecutionError(
+        raise exception.CommandExecutionError(
             "Command {!r} failed with exit code [{}]".format(
                 cmd[2][args_len:] if len(cmd[2]) - args_len < 30 else
                 "{}...".format(cmd[2][args_len:args_len + 30]),
@@ -379,7 +370,7 @@ def _copy_build_context(docker_client, container_id, step_config):
                 dst = os.path.join(BUILD_CONTEXT_DST_PATH, dst)
 
                 if not os.path.normpath(dst).startswith(BUILD_CONTEXT_DST_PATH):
-                    raise InvalidDockerBuildFile(
+                    raise exception.InvalidDockerBuildFile(
                         "Invalid Build Context 'DST' property {!r}, destination path must be "
                         "within the Build Context folder".format(
                             copy_details["DST"]
@@ -390,7 +381,7 @@ def _copy_build_context(docker_client, container_id, step_config):
 
         else:
 
-            raise InvalidDockerBuildConfigFile(
+            raise exception.InvalidDockerBuildConfigFile(
                 "BUILDCONTEXT is invalid, context must be either a String or a List of SRC and DST "
                 "objects"
             )
@@ -517,15 +508,15 @@ def _parse_arguments(loaded_args, args):
         # if on the other hand the argument is optional confirm that a default was given
         if "OPTIONAL" in options and not options["OPTIONAL"]:
             if name not in args:
-                raise MissingDockerBuildArgument(
+                raise exception.MissingDockerBuildArgument(
                     "Build argument {!r} is not optional but no value was passed in for the "
-                    "arguments".format(
+                    "argument".format(
                         name
                     )
                 )
         else:
             if "DEFAULT" not in options:
-                raise MissingDockerBuildArgument(
+                raise exception.MissingDockerBuildArgument(
                     "Build argument {!r} is optional but no default value is specified".format(
                         name
                     )
@@ -537,6 +528,19 @@ def _parse_arguments(loaded_args, args):
                 args[name] = base64.b64decode(options["DEFAULT"])
             else:
                 args[name] = options["DEFAULT"]
+
+        # confirm that the right value was given for the argument
+        if "CHOICES" in options and name in args:
+            if args[name] not in options["CHOICES"]:
+                raise exception.InvalidDockerBuildArgumentValue(
+                    "Value {value!r} for build argument {name!r} is invalid, supported values are "
+                    "{choices!r}"
+                    .format(
+                        value=args[name],
+                        name=name,
+                        choices=options["CHOICES"]
+                    )
+                )
 
 
 def _load_arguments(line_args, build_configs, common_configs):
@@ -551,7 +555,7 @@ def _load_arguments(line_args, build_configs, common_configs):
         try:
             _parse_arguments(build_configs["ARGS"], args)
         except Exception as ex:
-            raise InvalidDockerBuildFile(
+            raise exception.InvalidDockerBuildFile(
                 "Build File contains invalid argument declaration, parsing of file failed with "
                 "error - {!s}".format(
                     ex
@@ -562,7 +566,7 @@ def _load_arguments(line_args, build_configs, common_configs):
         try:
             _parse_arguments(common_configs["ARGS"], args)
         except Exception as ex:
-            raise InvalidDockerBuildConfigFile(
+            raise exception.InvalidDockerBuildConfigFile(
                 "Config File contains invalid argument declaration, parsing of file failed with "
                 "error - {!s}".format(
                     ex
@@ -586,7 +590,7 @@ def _parse_config_file(config_file_path):
     # determine if the config file exists, only raise an error if the given config is not the
     # default one
     if not file_exists and config_file_path != CONFIG_FILE_PATH:
-        raise DockerBuildConfigFileNotFound(
+        raise exception.DockerBuildConfigFileNotFound(
             "Docker Build configuration file not found at {!r}, please make sure that the right "
             "path was specified".format(
                 config_file_path
@@ -597,7 +601,7 @@ def _parse_config_file(config_file_path):
         try:
             config_file = yaml.load(open(expanded_path))
         except ParserError as ex:
-            raise InvalidDockerBuildConfigFile(
+            raise exception.InvalidDockerBuildConfigFile(
                 "Docker Build configuration file is invalid. File failed with error {!r} at {!r}"
                 .format(
                     ex.problem,
@@ -615,7 +619,7 @@ def _parse_build_file(build_file_path, args=None):
 
     # determine if the build file exists
     if not os.path.exists(expanded_path):
-        raise DockerBuildFileNotFound(
+        raise exception.DockerBuildFileNotFound(
             "Build file not found at {!r}, please make sure that the right "
             "path was specified".format(
                 build_file_path
@@ -632,11 +636,11 @@ def _parse_build_file(build_file_path, args=None):
         return yaml.load(build_file)
 
     except KeyError as ex:
-        raise InvalidDockerBuildFile(
+        raise exception.InvalidDockerBuildFile(
             "Build file is invalid. Argument {!r} is not defined".format(ex.message)
         )
     except ParserError as ex:
-        raise InvalidDockerBuildFile(
+        raise exception.InvalidDockerBuildFile(
             "Build file is invalid. File failed with error {!r} at {!r}".format(
                 ex.problem,
                 str(ex.problem_mark)
@@ -729,7 +733,9 @@ def main(argv=None):
 
         # determine from which image to start
         if "FROM" not in build_configs:
-            raise InvalidDockerBuildFile("FROM is not optional please confirm the build file")
+            raise exception.InvalidDockerBuildFile(
+                "FROM is not optional please confirm the build file"
+            )
 
         from_image = build_configs["FROM"]
 
@@ -758,7 +764,7 @@ def main(argv=None):
         log.info("Docker Build shutdown by user")
         return 130
 
-    except DockerBuildException as ex:
+    except exception.DockerBuildException as ex:
         log.error("Build failed due to error : {}".format(ex))
         return 1
 

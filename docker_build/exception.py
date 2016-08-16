@@ -52,6 +52,13 @@ class MissingDockerBuildArgument(DockerBuildException):
     pass
 
 
+class InvalidDockerBuildArgumentValue(DockerBuildException):
+    """
+    Raised if an invalid value was specified for a build argument
+    """
+    pass
+
+
 class CommandExecutionError(DockerBuildException):
     """
     Raised if the execution of a command in a Docker Container failed due to some error
