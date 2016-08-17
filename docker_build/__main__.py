@@ -27,6 +27,7 @@ from docker_build.util import \
     PutAction, \
     parse_key_value_option
 from yaml.parser import ParserError
+from requests.exceptions import RequestException
 
 
 # the path to the build context on the container. This determines where the specified build context
@@ -755,6 +756,10 @@ def main(argv=None):
     except KeyboardInterrupt:
         log.info("Docker Build shutdown by user")
         return 130
+
+    except RequestException:
+        log.error("Cannot connect to the Docker daemon. Is the docker daemon running on this host?")
+        return 1
 
     except exception.DockerBuildException as ex:
         log.error("Build failed due to error : {}".format(ex))
