@@ -224,49 +224,43 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
     Runs the given command in the container
     """
 
-    def execute_instructions(instruction_list, variable_list, logger=None):
+    def execute_instructions(instruction_list, variable_list, logger):
         """
         Executes all the given instructions against the container
         """
 
-        # execute each instruction against the container
-        for index, instruction in enumerate(instruction_list):
+        # execute the instruction
+        execute = docker_client.exec_create(
+            container=container_id,
+            cmd=[
+                "/bin/sh",
+                "-c",
+                "; ".join(["set -e"] + variable_list + instruction_list)
+            ],
+            user="root"
+        )
 
-            # execute the instruction
-            execute = docker_client.exec_create(
-                container=container_id,
-                cmd=[
-                    "/bin/sh",
-                    "-c",
-                    " && ".join(variable_list + [instruction])
-                ],
-                user="root"
-            )
+        stream = docker_client.exec_start(
+            exec_id=execute["Id"],
+            stream=True
+        )
 
-            stream = docker_client.exec_start(
-                exec_id=execute["Id"],
-                stream=True
-            )
+        # display whatever is being printed to the stdout of the container
+        for log_stream in stream:
+            logger.log(log_stream)
 
-            # display whatever is being printed to the stdout of the container
-            for log_stream in stream:
-                if logger:
-                    logger.log(log_stream[:-1])
+        # confirm that the command finished with no error
+        exit_code = docker_client.exec_inspect(execute["Id"])["ExitCode"]
 
-            # confirm that the command finished with no error
-            exit_code = docker_client.exec_inspect(execute["Id"])["ExitCode"]
-
-            if exit_code:
-                raise exception.CommandExecutionError(
-                    "Instruction (index: {index}) {instruction!r} failed with exit code "
-                    "[{exit_code}]"
-                    .format(
-                        index=index + 1,
-                        instruction=instruction if len(instruction) <= 30
-                        else "{}...".format(instruction[:30]),
-                        exit_code=exit_code
-                    )
+        if exit_code:
+            raise exception.CommandExecutionError(
+                "RUN command with instructions {instruction!r} failed with exit code [{exit_code}]"
+                .format(
+                    instruction=instruction_list[0] if len(instruction_list[0]) <= 30
+                    else "{}...".format(instruction_list[0][:30]),
+                    exit_code=exit_code
                 )
+            )
 
     # the list of variables that will be used during the execution of each command
     environment_variables = [
@@ -277,11 +271,8 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
     # the list of instructions to execute against the container
     instructions = command if isinstance(command, types.ListType) else [command]
 
-    if show_logs:
-        with ConsoleLogger("Start of Container Logs") as console_log:
-            execute_instructions(instructions, environment_variables, console_log)
-    else:
-        execute_instructions(instructions, environment_variables)
+    with ConsoleLogger(show_logs, "Start of Container Logs") as console_log:
+        execute_instructions(instructions, environment_variables, console_log)
 
 
 def _commit_image(docker_client, container_id, author=None, configs=None, tag=None):
