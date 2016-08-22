@@ -60,10 +60,11 @@ class ConsoleLogger():
 
             is_last_message_incomplete = message[-1:] != "\n"
 
-            # split the stream into individual lines, removing any empty lines
-            log_lines = (
-                self._buffer if self._buffer else "" +
-                message if is_last_message_incomplete else message[:-1]
+            # split the stream into individual lines, removing any empty lines but first append any
+            # previous messages that are in the buffer
+            log_lines = "{previous_message}{new_message}".format(
+                previous_message=self._buffer if self._buffer else "",
+                new_message=message if is_last_message_incomplete else message[:-1]
             ).split("\n")
 
             # if the last log entry is not complete keep it in the buffer for the next iteration

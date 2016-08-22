@@ -254,9 +254,10 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
 
         if exit_code:
             raise exception.CommandExecutionError(
-                "RUN command with instructions {instruction!r} failed with exit code [{exit_code}]"
+                "RUN command with instruction/s {instruction!r} failed with exit code [{exit_code}]"
                 .format(
-                    instruction=instruction_list[0] if len(instruction_list[0]) <= 30
+                    instruction=instruction_list[0]
+                    if len(instruction_list[0]) <= 30 and len(instruction_list) == 1
                     else "{}...".format(instruction_list[0][:30]),
                     exit_code=exit_code
                 )
