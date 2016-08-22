@@ -408,6 +408,17 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
         # determine if there is a build context specified
         build_context_populated = _copy_build_context(docker_client, container_id, step_config)
 
+        # copy over any files that are required if any specified
+        if "COPY" in step_config:
+            log.info("Copying folders or files to container")
+            for copy_details in step_config["COPY"]:
+                _copy(
+                    docker_client,
+                    container_id,
+                    copy_details["SRC"],
+                    copy_details["DST"]
+                )
+
         # execute the commands to make the necessary changes
         if "RUN" in step_config:
             log.info("Making necessary changes to the container")
@@ -427,17 +438,6 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
                 container_id,
                 "rm -rf {dst}".format(dst=BUILD_CONTEXT_DST_PATH)
             )
-
-        # copy over any files that are required if any specified
-        if "COPY" in step_config:
-            log.info("Copying folders or files to container")
-            for copy_details in step_config["COPY"]:
-                _copy(
-                    docker_client,
-                    container_id,
-                    copy_details["SRC"],
-                    copy_details["DST"]
-                )
 
         # commit the change done to the container
         log.info("Creating image with container changes")
