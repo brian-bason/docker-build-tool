@@ -11,11 +11,11 @@ def read(*paths):
 setup(
 
     name='docker-build-tool',
-    version='0.5.0',
+    version='0.5.1',
 
     description='Build tool for creating Docker Images',
 
-    url='https://bitbucket.org/softboxsolutions/docker-build.git',
+    url='https://github.com/brian-bason/docker-build-tool',
     author='Brian Bason',
     author_email='brianbason@gmail.com',
     classifiers=[],

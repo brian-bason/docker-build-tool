@@ -484,6 +484,29 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
 
 def _parse_arguments(loaded_args, args):
 
+    def decode_argument_value(encoded_value):
+        """
+        Decodes the value of an argument. The value is assumed to be Base64 encoded. The method will
+        raise InvalidDockerBuildArgumentValue if the value for the argument is invalid
+        """
+        try:
+
+            # base64 decode the value of the argument
+            # try to encode the argument value after decoding to make sure that the value is valid
+            return unicode(base64.b64decode(encoded_value), "utf8")
+
+        except TypeError:
+            raise exception.InvalidDockerBuildArgumentValue(
+                "Argument {!r} is invalid, argument value is not base64 encoded "
+                "but argument is marked as obfuscated".format(name)
+            )
+
+        except UnicodeDecodeError:
+            raise exception.InvalidDockerBuildArgumentValue(
+                "Argument {!r} is invalid, argument value is not a valid base64 string. "
+                "Please make sure that the string was properly encoded".format(name)
+            )
+
     if not isinstance(loaded_args, dict):
         raise ValueError("Arguments must be a list of key value pairs")
 
@@ -510,7 +533,7 @@ def _parse_arguments(loaded_args, args):
         # populate the default for the argument if it was not passed
         if "DEFAULT" in options and name not in args:
             if "OBFUSCATED" in options and options["OBFUSCATED"]:
-                args[name] = base64.b64decode(options["DEFAULT"])
+                args[name] = decode_argument_value(options["DEFAULT"])
             else:
                 args[name] = options["DEFAULT"]
 
