@@ -7,35 +7,27 @@ docker
 from __future__ import print_function
 
 import argparse
-import docker
 import json
-import yaml
 import logging
-import types
-import os
 import io
 import tarfile
-import base64
-import copy
 import sys
+import docker
+import types
+import os
 
 from docker import errors
-from docker_build.catalog import Configuration
-from docker_build.logger import ConsoleLogger
 from docker_build import exception
-from docker_build.util import \
+from docker_build.configuration.loader import FileLoader, MainConfigFileLoader
+from docker_build.configuration.model import BuildConfig, MainConfig
+from docker_build.constants import BUILD_CONTEXT_DST_PATH
+from docker_build.daemon.catalog import Configuration
+from docker_build.utils.argparser import \
     PutAction, \
     parse_key_value_option
-from yaml.parser import ParserError
+from docker_build.utils.logger import ConsoleLogger
 from requests.exceptions import RequestException
 
-
-# the path to the build context on the container. This determines where the specified build context
-# folder on the build machine will be copied on the container.
-BUILD_CONTEXT_DST_PATH = "/tmp/build-context"
-
-# the default path for the configuration file
-CONFIG_FILE_PATH = "~/.docker/build-config.yml"
 
 # the logger for the docker build tool
 log = logging.getLogger("docker_build")
@@ -482,180 +474,6 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
             _remove_container(docker_client, container_id)
 
 
-def _parse_arguments(loaded_args, args):
-
-    def decode_argument_value(encoded_value):
-        """
-        Decodes the value of an argument. The value is assumed to be Base64 encoded. The method will
-        raise InvalidDockerBuildArgumentValue if the value for the argument is invalid
-        """
-        try:
-
-            # base64 decode the value of the argument
-            # try to encode the argument value after decoding to make sure that the value is valid
-            return unicode(base64.b64decode(encoded_value), "utf8")
-
-        except TypeError:
-            raise exception.InvalidDockerBuildArgumentValue(
-                "Argument {!r} is invalid, argument value is not base64 encoded "
-                "but argument is marked as obfuscated".format(name)
-            )
-
-        except UnicodeDecodeError:
-            raise exception.InvalidDockerBuildArgumentValue(
-                "Argument {!r} is invalid, argument value is not a valid base64 string. "
-                "Please make sure that the string was properly encoded".format(name)
-            )
-
-    if not isinstance(loaded_args, dict):
-        raise ValueError("Arguments must be a list of key value pairs")
-
-    for name, options in loaded_args.items():
-
-        # if an argument is set as not optional confirm that the value for the argument is known.
-        # if on the other hand the argument is optional confirm that a default was given
-        if "OPTIONAL" in options and not options["OPTIONAL"]:
-            if name not in args:
-                raise exception.MissingDockerBuildArgument(
-                    "Build argument {!r} is not optional but no value was passed in for the "
-                    "argument".format(
-                        name
-                    )
-                )
-        else:
-            if "DEFAULT" not in options:
-                raise exception.MissingDockerBuildArgument(
-                    "Build argument {!r} is optional but no default value is specified".format(
-                        name
-                    )
-                )
-
-        # populate the default for the argument if it was not passed
-        if "DEFAULT" in options and name not in args:
-            if "OBFUSCATED" in options and options["OBFUSCATED"]:
-                args[name] = decode_argument_value(options["DEFAULT"])
-            else:
-                args[name] = options["DEFAULT"]
-
-        # confirm that the right value was given for the argument
-        if "CHOICES" in options and name in args:
-            if args[name] not in options["CHOICES"]:
-                raise exception.InvalidDockerBuildArgumentValue(
-                    "Value {value!r} for build argument {name!r} is invalid, supported values are "
-                    "{choices!r}"
-                    .format(
-                        value=args[name],
-                        name=name,
-                        choices=options["CHOICES"]
-                    )
-                )
-
-
-def _load_arguments(line_args, build_configs, common_configs):
-
-    # load the list of arguments that are required for the build
-    # first load the command line arguments (first priority)
-    # second the arguments in the build file (second priority, load additional args)
-    # last the arguments in the config file (last priority, load remaining args)
-    args = copy.deepcopy(line_args)
-
-    if "ARGS" in build_configs:
-        try:
-            _parse_arguments(build_configs["ARGS"], args)
-        except Exception as ex:
-            raise exception.InvalidDockerBuildFile(
-                "Build File contains invalid argument declaration, parsing of file failed with "
-                "error - {!s}".format(
-                    ex
-                )
-            )
-
-    if "ARGS" in common_configs:
-        try:
-            _parse_arguments(common_configs["ARGS"], args)
-        except Exception as ex:
-            raise exception.InvalidDockerBuildConfigFile(
-                "Config File contains invalid argument declaration, parsing of file failed with "
-                "error - {!s}".format(
-                    ex
-                )
-            )
-
-    # inject the build context path (path inside the container) that can be used for reference
-    # during the build process
-    args["BUILD_CONTEXT_PATH"] = BUILD_CONTEXT_DST_PATH
-
-    return args
-
-
-def _parse_config_file(config_file_path):
-
-    # expend the path
-    expanded_path = os.path.expanduser(config_file_path)
-    file_exists = os.path.exists(expanded_path)
-    config_file = {}
-
-    # determine if the config file exists, only raise an error if the given config is not the
-    # default one
-    if not file_exists and config_file_path != CONFIG_FILE_PATH:
-        raise exception.DockerBuildConfigFileNotFound(
-            "Docker Build configuration file not found at {!r}, please make sure that the right "
-            "path was specified".format(
-                config_file_path
-            )
-        )
-
-    if file_exists:
-        try:
-            config_file = yaml.load(open(expanded_path))
-        except ParserError as ex:
-            raise exception.InvalidDockerBuildConfigFile(
-                "Docker Build configuration file is invalid. File failed with error {!r} at {!r}"
-                .format(
-                    ex.problem,
-                    str(ex.problem_mark)
-                )
-            )
-
-    return config_file
-
-
-def _parse_build_file(build_file_path, args=None):
-
-    # expend the path
-    expanded_path = os.path.expanduser(build_file_path)
-
-    # determine if the build file exists
-    if not os.path.exists(expanded_path):
-        raise exception.DockerBuildFileNotFound(
-            "Build file not found at {!r}, please make sure that the right "
-            "path was specified".format(
-                build_file_path
-            )
-        )
-
-    try:
-
-        build_file = open(expanded_path).read()
-
-        if args:
-            build_file = build_file.format(**args)
-
-        return yaml.load(build_file)
-
-    except KeyError as ex:
-        raise exception.InvalidDockerBuildFile(
-            "Build file is invalid. Argument {!r} is not defined".format(ex.message)
-        )
-    except ParserError as ex:
-        raise exception.InvalidDockerBuildFile(
-            "Build file is invalid. File failed with error {!r} at {!r}".format(
-                ex.problem,
-                str(ex.problem_mark)
-            )
-        )
-
-
 def _get_docker_image_name_parts(image_name):
     """
     Gets the parts of the image name. The name is split into two parts, the repository and the tag
@@ -688,23 +506,22 @@ def main(argv=None):
              "equals sign"
     )
     parser.add_argument(
-        "-f", "--build-file",
-        dest="build_file_path",
+        "-b", "--build-config-file",
+        dest="build_config_file_path",
         type=str,
         default="./docker-build.yml",
-        help="The path to the build file that will be used during the build process. By default "
-             "the tool will look for the build file in the current working directory unless "
-             "overwritten with the use of this option"
+        help="The path to the build configuration file that will be used during the build process. "
+             "By default the tool will look for the build configuration file in the current "
+             "working directory unless overwritten with the use of this option"
     )
     parser.add_argument(
-        "-c", "--config-file",
-        dest="config_file_path",
+        "-m", "--main-config-file",
+        dest="main_config_file_path",
         type=str,
-        default=CONFIG_FILE_PATH,
-        help="The path to the configuration file that will be used during the build process. By "
-             "default the tool will look for the configuration file in the users home directory "
-             "under the .docker folder. The default behaviour can be overwritten with the use of "
-             "this option"
+        help="The path to the main configuration file that will be used during the build process. "
+             "By default the tool will look for the main configuration file in the users home "
+             "directory under the .docker folder. The default behaviour can be overwritten with "
+             "the use of this option"
     )
     parser.add_argument(
         "-t", "--tag",
@@ -728,54 +545,47 @@ def main(argv=None):
         # parse the command line arguments passed to the tool
         command_line_args = parser.parse_args(argv)
 
-        # load the common configuration file
-        common_configs = _parse_config_file(command_line_args.config_file_path)
+        # load the configuration file
+        config_file_loader = MainConfigFileLoader(command_line_args.main_config_file_path)
+        configs = MainConfig(config_file_loader.load().content)
 
-        # load the build configuration file
-        build_configs = _parse_build_file(
-            args={},
-            build_file_path=command_line_args.build_file_path
+        # load all the build arguments for the build process
+        build_args = dict(
+            configs.arguments.items() + command_line_args.build_args.items()
         )
 
-        # load the list of arguments from all known sources
-        build_args = _load_arguments(
-            line_args=command_line_args.build_args,
-            build_configs=build_configs,
-            common_configs=common_configs
-        )
-
-        # reload the build configs replacing all of the specified arguments with actual values
-        build_configs = _parse_build_file(
-            args=build_args,
-            build_file_path=command_line_args.build_file_path
+        # load the build file
+        build_configs = BuildConfig(
+            FileLoader(command_line_args.build_config_file_path).load().content,
+            build_args
         )
 
         docker_client = docker.from_env(assert_hostname=False)
 
         # determine from which image to start
-        if "FROM" not in build_configs:
+        if "FROM" not in build_configs.build_details:
             raise exception.InvalidDockerBuildFile(
                 "FROM is not optional please confirm the build file"
             )
 
-        from_image = build_configs["FROM"]
+        from_image = build_configs.build_details["FROM"]
 
         # if the tag command line argument was specified update the tag that is set in the build
         # file
         if command_line_args.tag:
-            build_configs["TAG"] = command_line_args.tag
+            build_configs.build_details["TAG"] = command_line_args.tag
 
         # change the working directory to the path where the build file is located before commencing
         # the build. This will make sure that all the paths in the build file are relative to the
         # build file itself
-        os.chdir(os.path.dirname(command_line_args.build_file_path))
+        os.chdir(os.path.dirname(command_line_args.build_config_file_path))
 
         # go through the steps to create the necessary images
-        for step_config in build_configs["STEPS"]:
+        for step_config in build_configs.build_details["STEPS"]:
             from_image = _build(
                 docker_client,
                 build_args,
-                build_configs,
+                build_configs.build_details,
                 step_config,
                 from_image,
                 not command_line_args.keep_containers
