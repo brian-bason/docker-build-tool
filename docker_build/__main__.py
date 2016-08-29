@@ -15,6 +15,7 @@ import sys
 import docker
 import types
 import os
+import time
 
 from docker import errors
 from docker_build import exception
@@ -542,6 +543,9 @@ def main(argv=None):
 
     try:
 
+        # start the timer to find out at the end how long the build took
+        start_time = time.time()
+
         # parse the command line arguments passed to the tool
         command_line_args = parser.parse_args(argv)
 
@@ -590,6 +594,12 @@ def main(argv=None):
                 from_image,
                 not command_line_args.keep_containers
             )
+
+        total_build_time = int(time.time() - start_time)
+        log.info("Build finished in {} min/s {} sec/s".format(
+            int(total_build_time / 60),
+            total_build_time % 60
+        ))
 
     except KeyboardInterrupt:
         log.info("Docker Build shutdown by user")
