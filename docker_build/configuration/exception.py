@@ -27,3 +27,24 @@ class InvalidArgumentValue(DockerBuildException):
     Raised if an invalid value was specified for an argument
     """
     pass
+
+
+class InvalidArgumentReference(DockerBuildException):
+    """
+    Raised if an invalid reference is made to an argument in a build file
+    """
+    pass
+
+
+class InvalidFunctionReference(DockerBuildException):
+    """
+    Raised if an invalid reference is made to a function in a build file
+    """
+    pass
+
+
+class FunctionExecutionError(DockerBuildException):
+    """
+    Raised if an error is encountered when a build in function is executed
+    """
+    pass

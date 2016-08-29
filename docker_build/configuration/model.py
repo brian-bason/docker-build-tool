@@ -8,6 +8,7 @@ from docker_build.configuration.exception import \
     InvalidBuildConfigurations, \
     MissingArgument, \
     InvalidArgumentValue
+from docker_build.configuration.parser import ConfigurationParser
 from yaml.parser import ParserError
 
 
@@ -121,7 +122,7 @@ class BuildConfig(object):
         try:
 
             if hasattr(self, "_build_arguments") and self._build_arguments:
-                build_details = build_details.format(**self._build_arguments)
+                build_details = ConfigurationParser.parse(build_details, self._build_arguments)
 
             return yaml.load(build_details)
 
