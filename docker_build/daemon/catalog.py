@@ -5,7 +5,7 @@ Defines the different enumerations that are required by the Docker Build tool
 import types
 
 from enum import Enum
-from docker_build.util import convert_to_list
+from docker_build.utils.argparser import convert_to_list
 
 
 class Configuration(Enum):

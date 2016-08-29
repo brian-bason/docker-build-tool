@@ -1,5 +1,5 @@
 """
-Utility functions and classes that can be used across the Docker Build module
+Utility functions for command line argument parsing
 """
 
 import types
