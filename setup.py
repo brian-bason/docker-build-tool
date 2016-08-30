@@ -1,5 +1,6 @@
 import os
 
+from docker_build import __version__
 from setuptools import setup, find_packages
 
 
@@ -11,7 +12,7 @@ def read(*paths):
 setup(
 
     name='docker-build-tool',
-    version='0.7.1',
+    version=__version__,
 
     description='Build tool for creating Docker Images',
 

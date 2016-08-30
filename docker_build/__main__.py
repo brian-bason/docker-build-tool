@@ -18,6 +18,7 @@ import os
 import time
 
 from docker import errors
+from docker_build import __version__
 from docker_build import exception
 from docker_build.configuration.loader import FileLoader, MainConfigFileLoader
 from docker_build.configuration.model import BuildConfig, MainConfig
@@ -537,10 +538,23 @@ def main(argv=None):
     parser.add_argument(
         "--keep",
         dest="keep_containers",
-        action='store_true',
+        action="store_true",
         help="Keeps the intermediate containers after a build. The default behaviour is to remove "
              "all created containers but sometimes it is useful to leave them for debugging "
              "purposes"
+    )
+    parser.add_argument(
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        help="Prints more logs during the build process to give more context of what is happening"
+             "in during a build of an Docker image"
+    )
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version="docker-build-tool version {}".format(__version__),
+        help="Prints the program's version number and exits"
     )
 
     try:
@@ -550,6 +564,10 @@ def main(argv=None):
 
         # parse the command line arguments passed to the tool
         command_line_args = parser.parse_args(argv)
+
+        # determine if lower level logging should be enabled
+        if command_line_args.verbose:
+            log.setLevel(logging.DEBUG)
 
         # load the configuration file
         config_file_loader = MainConfigFileLoader(command_line_args.main_config_file_path)

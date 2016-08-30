@@ -1,15 +1,14 @@
-__author__ = 'Brian Bason'
-
 from logging import StreamHandler, Formatter
 import logging
 
+__author__ = "Brian Bason"
+__version__ = "0.8.0"
 
 # create the default handler
 default_handler = StreamHandler()
 default_handler.setFormatter(
     fmt=Formatter(
-        fmt="%(asctime)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        fmt="%(message)s"
     )
 )
 
