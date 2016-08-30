@@ -168,7 +168,9 @@ def _copy(docker_client, container_id, source, destination):
 
     # confirm that the given path is valid
     if not os.path.exists(source):
-        raise IOError("Invalid source path, path {!s} could not be found".format(source))
+        raise exception.SourcePathNotFound(
+            "Source path {!r} is invalid, specified path could not be found".format(source)
+        )
 
     # determine the source and destination type
     is_src_dir = os.path.isdir(source)
@@ -609,7 +611,7 @@ def main(argv=None):
         log.error("Cannot connect to the Docker daemon. Is the docker daemon running on this host?")
         return 1
 
-    except exception.DockerBuildException as ex:
+    except (exception.DockerBuildException, exception.DockerBuildIOError) as ex:
         log.error("Build failed due to error : {}".format(ex))
         return 1
 
