@@ -14,8 +14,9 @@ class ConsoleLogger():
     :type is_enabled: bool
     :type header: str
     """
-    _header_line_character = "*"
+    _header_line_character = "-"
     _header_line_marker = _header_line_character * 26
+    _log_line_pre_spacer = "-> "
 
     def __init__(self, is_enabled=True, header=None):
         self._is_enabled = is_enabled
@@ -37,7 +38,10 @@ class ConsoleLogger():
         if self._is_enabled:
             # print whatever is left in the buffer
             if self._buffer:
-                self._log.info(self._buffer)
+                self._log.info("{spacer}{message}".format(
+                    spacer=self._log_line_pre_spacer,
+                    message=self._buffer
+                ))
 
             # print the footer if a header was specified
             if self._header:
@@ -76,4 +80,7 @@ class ConsoleLogger():
                 self._buffer = None
 
             for log_line in log_lines:
-                self._log.info(log_line)
+                self._log.info("{spacer}{message}".format(
+                    spacer=self._log_line_pre_spacer,
+                    message=log_line
+                ))
