@@ -186,10 +186,6 @@ class BuildConfig(object):
                                 )
                             )
 
-                # inject the build context path (path inside the container) that can be used for
-                # reference during the build process
-                arguments["BUILD_CONTEXT_PATH"] = BUILD_CONTEXT_DST_PATH
-
             except Exception as ex:
                 raise InvalidBuildConfigurations(
                     "Build configurations contains invalid argument declaration, parsing of "
@@ -197,5 +193,9 @@ class BuildConfig(object):
                         ex
                     )
                 )
+
+        # inject the build context path (path inside the container) that can be used for
+        # reference during the build process
+        arguments["BUILD_CONTEXT_PATH"] = BUILD_CONTEXT_DST_PATH
 
         return arguments
