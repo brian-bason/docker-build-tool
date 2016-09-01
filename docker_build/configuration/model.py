@@ -7,7 +7,8 @@ from docker_build.configuration.exception import \
     InvalidMainConfigurations, \
     InvalidBuildConfigurations, \
     MissingArgument, \
-    InvalidArgumentValue
+    InvalidArgumentValue, \
+    InvalidArgumentMapping
 from docker_build.configuration.parser import ConfigurationParser
 from yaml.parser import ParserError
 
@@ -143,8 +144,7 @@ class BuildConfig(object):
 
     def _read_arguments(self, build_arguments):
 
-        # the list of arguments that are loaded from the config and from the passed in arguments
-        # during the build
+        # the list of variables that are loaded from the list of arguments for the build
         arguments = copy.deepcopy(build_arguments)
 
         if "ARGS" in self._parsed_build_details:
@@ -160,13 +160,13 @@ class BuildConfig(object):
                     if "REQUIRED" in attributes and attributes["REQUIRED"]:
                         if name not in arguments:
                             raise MissingArgument(
-                                "Build argument {!r} is not optional but no value was passed in "
-                                "for the argument".format(name)
+                                "Build argument {!r} is required but no value was passed in for "
+                                "the argument".format(name)
                             )
                     else:
                         if "DEFAULT" not in attributes:
                             raise MissingArgument(
-                                "Build argument {!r} is optional but no default value is specified"
+                                "Build argument {!r} is required but no default value is specified"
                                 .format(name)
                             )
 
@@ -185,6 +185,64 @@ class BuildConfig(object):
                                     choices=attributes["CHOICES"]
                                 )
                             )
+
+                    # confirm if there are any other variables to be loaded
+                    if "MAPPINGS" in attributes:
+
+                        for index, mapping in enumerate(attributes["MAPPINGS"]):
+
+                            if "NAME" not in mapping:
+                                raise InvalidArgumentMapping(
+                                    "Mapping [{mapping_index}] for build argument {argument_name!r}"
+                                    " is invalid, mapping should contain NAME attribute".format(
+                                        mapping_index=index,
+                                        argument_name=name
+                                    )
+                                )
+
+                            mapping_name = mapping["NAME"]
+
+                            if "VALUES" not in mapping:
+                                raise InvalidArgumentMapping(
+                                    "Mapping {mapping_name!r} for build argument {argument_name!r} "
+                                    "is invalid, mapping should contain VALUES attribute".format(
+                                        mapping_name=mapping_name,
+                                        argument_name=name
+                                    )
+                                )
+
+                            argument_value = arguments[name]
+                            mapping_values = mapping["VALUES"]
+                            mapping_default = mapping["DEFAULT"] if "DEFAULT" in mapping else None
+
+                            if argument_value not in mapping_values and not mapping_default:
+                                raise InvalidArgumentMapping(
+                                    "Mapping {mapping_name!r} for argument {argument_name!r} does "
+                                    "not contain mapping for value {value!r} and no default value "
+                                    "specified either".format(
+                                        mapping_name=mapping_name,
+                                        argument_name=name,
+                                        value=argument_value
+                                    )
+                                )
+
+                            # add the new variable to the list of build arguments
+                            arguments[mapping_name] = mapping_values[argument_value] \
+                                if argument_value in mapping_values else mapping_default
+
+                            # confirm that no data structures have been passed and only string or
+                            # numbers have been set for the value
+                            if isinstance(arguments[mapping_name], dict) or \
+                                    isinstance(arguments[mapping_name], list):
+                                raise InvalidArgumentMapping(
+                                    "Mapping {mapping_name!r} for argument {argument_name!r} "
+                                    "contains an invalid mapping for value {value!r}, only strings "
+                                    "and numbers are supported".format(
+                                        mapping_name=mapping_name,
+                                        argument_name=name,
+                                        value=argument_value
+                                    )
+                                )
 
             except Exception as ex:
                 raise InvalidBuildConfigurations(

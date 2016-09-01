@@ -29,6 +29,13 @@ class InvalidArgumentValue(DockerBuildException):
     pass
 
 
+class InvalidArgumentMapping(DockerBuildException):
+    """
+    Raised if an invalid mapping for an argument is defined
+    """
+    pass
+
+
 class InvalidArgumentReference(DockerBuildException):
     """
     Raised if an invalid reference is made to an argument in a build file
