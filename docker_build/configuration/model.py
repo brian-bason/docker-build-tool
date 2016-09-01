@@ -215,7 +215,7 @@ class BuildConfig(object):
                             mapping_values = mapping["VALUES"]
                             mapping_default = mapping["DEFAULT"] if "DEFAULT" in mapping else None
 
-                            if argument_value not in mapping_values and not mapping_default:
+                            if argument_value not in mapping_values and mapping_default is None:
                                 raise InvalidArgumentMapping(
                                     "Mapping {mapping_name!r} for argument {argument_name!r} does "
                                     "not contain mapping for value {value!r} and no default value "
