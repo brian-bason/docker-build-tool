@@ -36,22 +36,45 @@ class InvalidArgumentMapping(DockerBuildException):
     pass
 
 
-class InvalidArgumentReference(DockerBuildException):
+class InvalidVariableReference(DockerBuildException):
     """
-    Raised if an invalid reference is made to an argument in a build file
+    Raised if an invalid reference is made to a variable in a build file
     """
-    pass
+    def __init__(self, message, variable_name):
+        super(InvalidVariableReference, self).__init__(message)
+        self._variable_name = variable_name
+
+    @property
+    def variable_name(self):
+        return self._variable_name
 
 
 class InvalidFunctionReference(DockerBuildException):
     """
     Raised if an invalid reference is made to a function in a build file
     """
-    pass
+    def __init__(self, message, function_name):
+        super(InvalidFunctionReference, self).__init__(message)
+        self._function_name = function_name
+
+    @property
+    def function_name(self):
+        return self._function_name
 
 
 class FunctionExecutionError(DockerBuildException):
     """
     Raised if an error is encountered when a build in function is executed
     """
-    pass
+    def __init__(self, message, function_name, cause):
+        super(FunctionExecutionError, self).__init__(message)
+        self._function_name = function_name
+        self._cause = cause
+
+    @property
+    def function_name(self):
+        return self._function_name
+
+    @property
+    def cause(self):
+        return self._cause

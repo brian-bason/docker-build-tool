@@ -571,15 +571,15 @@ def main(argv=None):
 
         # load the configuration file
         config_file_loader = MainConfigFileLoader(command_line_args.main_config_file_path)
-        configs = MainConfig(config_file_loader.load().content)
+        main_config = MainConfig(config_file_loader.load().content)
 
         # load all the build arguments for the build process
         build_args = dict(
-            configs.arguments.items() + command_line_args.build_args.items()
+            main_config.arguments.items() + command_line_args.build_args.items()
         )
 
         # load the build file
-        build_configs = BuildConfig(
+        build_config = BuildConfig(
             FileLoader(command_line_args.build_config_file_path).load().content,
             build_args
         )
@@ -587,17 +587,17 @@ def main(argv=None):
         docker_client = docker.from_env(assert_hostname=False)
 
         # determine from which image to start
-        if "FROM" not in build_configs.build_details:
+        if "FROM" not in build_config.config:
             raise exception.InvalidDockerBuildFile(
                 "FROM is not optional please confirm the build file"
             )
 
-        from_image = build_configs.build_details["FROM"]
+        from_image = build_config.config["FROM"]
 
         # if the tag command line argument was specified update the tag that is set in the build
         # file
         if command_line_args.tag:
-            build_configs.build_details["TAG"] = command_line_args.tag
+            build_config.config["TAG"] = command_line_args.tag
 
         # change the working directory to the path where the build file is located before commencing
         # the build. This will make sure that all the paths in the build file are relative to the
@@ -605,11 +605,11 @@ def main(argv=None):
         os.chdir(os.path.dirname(command_line_args.build_config_file_path))
 
         # go through the steps to create the necessary images
-        for step_config in build_configs.build_details["STEPS"]:
+        for step_config in build_config.config["STEPS"]:
             from_image = _build(
                 docker_client,
                 build_args,
-                build_configs.build_details,
+                build_config.config,
                 step_config,
                 from_image,
                 not command_line_args.keep_containers

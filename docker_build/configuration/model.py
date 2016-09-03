@@ -8,8 +8,11 @@ from docker_build.configuration.exception import \
     InvalidBuildConfigurations, \
     MissingArgument, \
     InvalidArgumentValue, \
-    InvalidArgumentMapping
-from docker_build.configuration.parser import ConfigurationParser
+    InvalidArgumentMapping, \
+    InvalidVariableReference, \
+    InvalidFunctionReference, \
+    FunctionExecutionError
+from docker_build.configuration.parser import ConfigurationParser, FUNCTIONS
 from yaml.parser import ParserError
 
 
@@ -19,9 +22,7 @@ class MainConfig(object):
     """
 
     def __init__(self, config=None):
-        self._config = config
-
-        self._parsed_config = self._parse() if config else None
+        self._config = MainConfig._parse(config) if config else None
         self._arguments = self._read_arguments()
 
     @property
@@ -33,17 +34,14 @@ class MainConfig(object):
         """
         return self._arguments
 
-    def _parse(self):
+    @staticmethod
+    def _parse(config):
 
         try:
-
-            return yaml.load(self._config)
-
+            return yaml.load(config)
         except ParserError as ex:
             raise InvalidMainConfigurations(
-                "Main configurations are invalid. Configurations parsing failed with "
-                "error {!r} at {!r}"
-                .format(
+                "Main configuration is invalid, parsing failed with error {!r} at {!r}".format(
                     ex.problem,
                     str(ex.problem_mark)
                 )
@@ -64,7 +62,7 @@ class MainConfig(object):
             try:
 
                 # read all the arguments
-                for name, attributes in self._parsed_config["ARGS"].items():
+                for name, attributes in self._config["ARGS"].items():
                     try:
 
                         value = attributes["VALUE"]
@@ -80,7 +78,7 @@ class MainConfig(object):
 
             except Exception as ex:
                 raise InvalidMainConfigurations(
-                    "Main configurations contains invalid argument declaration, parsing of "
+                    "Main configuration contains invalid argument declaration, parsing of "
                     "configurations failed with error - {!s}".format(ex)
                 )
 
@@ -91,74 +89,61 @@ class BuildConfig(object):
     """
     The build config containing instructions of a particular build that is to be performed
 
-    :param build_details: The details of a build as loaded from the source
+    :param config: The configuration of a build as loaded from the source
     :param build_arguments: The list of arguments as specified for the build
 
-    :type build_details: str
+    :type config: str
     :type build_arguments: dict
     """
 
-    def __init__(self, build_details, build_arguments=None):
+    def __init__(self, config, build_arguments=None):
 
-        if not build_details:
-            raise ValueError("Build details must be specified and cannot be None")
+        if not config:
+            raise ValueError("Configuration must be specified and cannot be None")
 
-        self._build_details = build_details
+        # parse the build file and build a list of all possible variables
+        parsed_config = BuildConfig._parse(config)
+        self._variables = BuildConfig._load_variables(parsed_config, build_arguments or {})
 
-        # parse the build file and read the arguments
-        self._parsed_build_details = self._parse()
-        self._build_arguments = self._read_arguments(build_arguments or {})
-
-        # reload the build file populating the build arguments
-        self._parsed_build_details = self._parse()
+        # evaluate all the variables defined in the build config
+        BuildConfig._evaluate_variables(parsed_config, self._variables)
+        self._config = parsed_config
 
     @property
-    def build_details(self):
-        return self._parsed_build_details
+    def config(self):
+        return self._config
 
-    def _parse(self):
-
-        build_details = copy.copy(self._build_details)
+    @staticmethod
+    def _parse(config):
 
         try:
-
-            if hasattr(self, "_build_arguments") and self._build_arguments:
-                build_details = ConfigurationParser.parse(build_details, self._build_arguments)
-
-            return yaml.load(build_details)
-
-        except KeyError as ex:
-            raise InvalidBuildConfigurations(
-                "Build configurations are invalid. Argument {!r} is not defined".format(
-                    ex.message
-                )
-            )
-
+            return yaml.load(config)
         except ParserError as ex:
             raise InvalidBuildConfigurations(
-                "Build configurations are invalid. Details failed with error {!r} at {!r}".format(
+                "Build configuration is invalid, parsing failed with error {!r} at {!r}".format(
                     ex.problem,
                     str(ex.problem_mark)
                 )
             )
 
-    def _read_arguments(self, build_arguments):
+    @staticmethod
+    def _load_variables(config, build_arguments):
 
         # the list of variables that are loaded from the list of arguments for the build
-        arguments = copy.deepcopy(build_arguments)
+        variables = copy.deepcopy(build_arguments)
 
-        if "ARGS" in self._parsed_build_details:
+        if "ARGS" in config:
 
             try:
 
                 # read all the arguments
-                for name, attributes in self._parsed_build_details["ARGS"].items():
+                for name, attributes in config["ARGS"].items():
 
                     # if an argument is set as required confirm that the value for the argument is
                     # known. if on the other hand the argument is optional confirm that a default
                     # was given
                     if "REQUIRED" in attributes and attributes["REQUIRED"]:
-                        if name not in arguments:
+                        if name not in variables:
                             raise MissingArgument(
                                 "Build argument {!r} is required but no value was passed in for "
                                 "the argument".format(name)
@@ -171,16 +156,16 @@ class BuildConfig(object):
                             )
 
                     # populate the default for the argument if it was not passed
-                    if "DEFAULT" in attributes and name not in arguments:
-                        arguments[name] = attributes["DEFAULT"]
+                    if "DEFAULT" in attributes and name not in variables:
+                        variables[name] = attributes["DEFAULT"]
 
                     # confirm that the right value was given for the argument
-                    if "CHOICES" in attributes and name in arguments:
-                        if arguments[name] not in attributes["CHOICES"]:
+                    if "CHOICES" in attributes and name in variables:
+                        if variables[name] not in attributes["CHOICES"]:
                             raise InvalidArgumentValue(
                                 "Value {value!r} for build argument {name!r} is invalid, supported "
                                 "values are {choices!r}".format(
-                                    value=arguments[name],
+                                    value=variables[name],
                                     name=name,
                                     choices=attributes["CHOICES"]
                                 )
@@ -211,7 +196,7 @@ class BuildConfig(object):
                                     )
                                 )
 
-                            argument_value = arguments[name]
+                            argument_value = variables[name]
                             mapping_values = mapping["VALUES"]
                             mapping_default = mapping["DEFAULT"] if "DEFAULT" in mapping else None
 
@@ -227,22 +212,8 @@ class BuildConfig(object):
                                 )
 
                             # add the new variable to the list of build arguments
-                            arguments[mapping_name] = mapping_values[argument_value] \
+                            variables[mapping_name] = mapping_values[argument_value] \
                                 if argument_value in mapping_values else mapping_default
-
-                            # confirm that no data structures have been passed and only string or
-                            # numbers have been set for the value
-                            if isinstance(arguments[mapping_name], dict) or \
-                                    isinstance(arguments[mapping_name], list):
-                                raise InvalidArgumentMapping(
-                                    "Mapping {mapping_name!r} for argument {argument_name!r} "
-                                    "contains an invalid mapping for value {value!r}, only strings "
-                                    "and numbers are supported".format(
-                                        mapping_name=mapping_name,
-                                        argument_name=name,
-                                        value=argument_value
-                                    )
-                                )
 
             except Exception as ex:
                 raise InvalidBuildConfigurations(
@@ -254,6 +225,92 @@ class BuildConfig(object):
 
         # inject the build context path (path inside the container) that can be used for
         # reference during the build process
-        arguments["BUILD_CONTEXT_PATH"] = BUILD_CONTEXT_DST_PATH
+        variables["BUILD_CONTEXT_PATH"] = BUILD_CONTEXT_DST_PATH
 
-        return arguments
+        return variables
+
+    @staticmethod
+    def _evaluate_variables(config_section, variables, parent_key=None):
+        """
+        Evaluates the variables defined in the build configuration section that is being evaluated
+
+        :param config_section: The part of the configuration that is being evaluated
+        :param variables: The list of variables that are known for the build
+        :param parent_key: The key to the parent attribute
+
+        :type config_section: dict or list
+        :type variables: dict
+        :type parent_key: str or None
+
+        :raises InvalidBuildConfigurations: If any of the configurations contains any error
+        """
+
+        # iterate through the attributes of the build config section that is being processed. The
+        # build config can either be a dictionary or a list so the iteration can be going through
+        # either the key of the dictionary or the item itself in the list.
+        for index, key_or_item in enumerate(config_section):
+
+            # if the config section that is being evaluated is the arguments themselves skip them
+            # there is no need to evaluate that section
+            if key_or_item == "ARGS" and not parent_key:
+                continue
+
+            key_or_index = index if isinstance(config_section, list) else key_or_item
+            current_config_section = config_section[key_or_index]
+            # creates a key in the format of level1.level2
+            current_parent_key = "{}{}{}{}".format(
+                parent_key if parent_key else "",
+                "" if not parent_key else "." if isinstance(config_section, dict) else "[",
+                key_or_item if isinstance(config_section, dict) else index + 1,
+                "" if not parent_key or isinstance(config_section, dict) else "]"
+            )
+
+            if isinstance(current_config_section, dict) or isinstance(current_config_section, list):
+
+                # if the current configuration section being evaluated has more attributes evaluate
+                # its attributes too.
+                BuildConfig._evaluate_variables(
+                    current_config_section, variables, current_parent_key
+                )
+
+            else:
+
+                try:
+
+                    # parse the details of the attribute
+                    if current_config_section:
+                        parsed_item = ConfigurationParser.parse(current_config_section, variables)
+                        config_section[key_or_index] = parsed_item
+
+                except InvalidVariableReference as ex:
+                    raise InvalidBuildConfigurations(
+                        "Build configuration is invalid. Attribute {attribute_name!r} contains a "
+                        "reference to variable {variable_name!r} that is not defined. Variable has "
+                        "to be one of {all_variables_names}".format(
+                            attribute_name=current_parent_key,
+                            variable_name=ex.variable_name,
+                            all_variables_names=variables.keys()
+                        )
+                    )
+
+                except InvalidFunctionReference as ex:
+                    raise InvalidBuildConfigurations(
+                        "Build configuration is invalid. Attribute {attribute_name!r} contains a "
+                        "reference to a function {function_name!r} that is not known. Function has "
+                        "to be one of {all_function_names}".format(
+                            attribute_name=current_parent_key,
+                            function_name=ex.function_name,
+                            all_function_names=FUNCTIONS.keys()
+                        )
+                    )
+
+                except FunctionExecutionError as ex:
+                    raise InvalidBuildConfigurations(
+                        "Build configuration is invalid. Attribute {attribute_name!r} contains a "
+                        "reference to function {function_name!r} that failed with error: {error!r}"
+                        .format(
+                            attribute_name=current_parent_key,
+                            function_name=ex.function_name,
+                            error=ex.cause
+                        )
+                    )
