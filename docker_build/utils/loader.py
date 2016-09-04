@@ -1,7 +1,9 @@
 import os
 
+from docker_build.exception import DockerBuildIOError
 
-class FileNotFound(IOError):
+
+class FileNotFound(DockerBuildIOError):
     """
     Raised if any of the files required by the the Docker Build tool is not found
     """

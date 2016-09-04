@@ -19,7 +19,15 @@ import time
 
 from docker import errors
 from docker_build import __version__
-from docker_build import exception
+from docker_build.exception import \
+    DockerBuildException, \
+    DockerBuildIOError, \
+    DockerImageNotFound, \
+    SourcePathNotFound, \
+    InvalidDockerBuildOptionValue, \
+    CommandExecutionError
+from docker_build.configuration.exception import \
+    InvalidBuildConfigurations
 from docker_build.configuration.loader import FileLoader, MainConfigFileLoader
 from docker_build.configuration.model import BuildConfig, MainConfig
 from docker_build.constants import BUILD_CONTEXT_DST_PATH
@@ -108,7 +116,7 @@ def _pull_image(docker_client, image_name):
             status_log = details["status"]
 
         if "error" in details:
-            raise exception.DockerImageNotFound(details["error"])
+            raise DockerImageNotFound(details["error"])
 
     print("", end="\r")
     log.info(status_log)
@@ -144,7 +152,7 @@ def _create_container(docker_client, image):
                 _pull_image(docker_client, image)
                 return create_container_with_auto_pull(True)
             else:
-                raise exception.DockerImageNotFound("Image {!r} could not be found".format(image))
+                raise DockerImageNotFound("Image {!r} could not be found".format(image))
 
     # create the container
     container = create_container_with_auto_pull()
@@ -169,7 +177,7 @@ def _copy(docker_client, container_id, source, destination):
 
     # confirm that the given path is valid
     if not os.path.exists(source):
-        raise exception.SourcePathNotFound(
+        raise SourcePathNotFound(
             "Source path {!r} is invalid, specified path could not be found".format(source)
         )
 
@@ -180,7 +188,7 @@ def _copy(docker_client, container_id, source, destination):
     # confirm that the right combination of source to destination is specified
     # the only invalid option is if the source is a directory and the destination is a file
     if is_src_dir and not is_dst_dir:
-        raise exception.InvalidDockerBuildOptionValue(
+        raise InvalidDockerBuildOptionValue(
             "Invalid copy destination {!r}, path must be a folder since source {!r} ia a folder"
             .format(destination, source)
         )
@@ -215,7 +223,7 @@ def _copy(docker_client, container_id, source, destination):
     )
 
 
-def _run_command(docker_client, container_id, command, args={}, show_logs=False):
+def _run_command(docker_client, container_id, command, args=None, show_logs=False):
     """
     Runs the given command in the container
     """
@@ -249,7 +257,7 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
         exit_code = docker_client.exec_inspect(execute["Id"])["ExitCode"]
 
         if exit_code:
-            raise exception.CommandExecutionError(
+            raise CommandExecutionError(
                 "RUN command with instruction/s {instruction!r} failed with exit code [{exit_code}]"
                 .format(
                     instruction=instruction_list[0]
@@ -261,8 +269,8 @@ def _run_command(docker_client, container_id, command, args={}, show_logs=False)
 
     # the list of variables that will be used during the execution of each command
     environment_variables = [
-        "export {name}={value}".format(name=name, value=value)
-        for name, value in args.items()
+        "export {name}={value}".format(name=name, value=args[name])
+        for name in args or {}
     ]
 
     # the list of instructions to execute against the container
@@ -293,7 +301,7 @@ def _commit_image(docker_client, container_id, author=None, configs=None, tag=No
 
     # add all the specified build options
     if configs:
-        for configuration_option in Configuration:
+        for index, configuration_option in enumerate(Configuration):
             _parse_config(configs, params["conf"], configuration_option)
 
     # commit the changes
@@ -351,7 +359,7 @@ def _copy_build_context(docker_client, container_id, step_config):
                 dst = os.path.join(BUILD_CONTEXT_DST_PATH, dst)
 
                 if not os.path.normpath(dst).startswith(BUILD_CONTEXT_DST_PATH):
-                    raise exception.InvalidDockerBuildFile(
+                    raise InvalidBuildConfigurations(
                         "Invalid Build Context 'DST' property {!r}, destination path must be "
                         "within the Build Context folder".format(
                             copy_details["DST"]
@@ -362,7 +370,7 @@ def _copy_build_context(docker_client, container_id, step_config):
 
         else:
 
-            raise exception.InvalidDockerBuildConfigFile(
+            raise InvalidBuildConfigurations(
                 "BUILDCONTEXT is invalid, context must be either a String or a List of SRC and DST "
                 "objects"
             )
@@ -588,7 +596,7 @@ def main(argv=None):
 
         # determine from which image to start
         if "FROM" not in build_config.config:
-            raise exception.InvalidDockerBuildFile(
+            raise InvalidBuildConfigurations(
                 "FROM is not optional please confirm the build file"
             )
 
@@ -629,7 +637,7 @@ def main(argv=None):
         log.error("Cannot connect to the Docker daemon. Is the docker daemon running on this host?")
         return 1
 
-    except (exception.DockerBuildException, exception.DockerBuildIOError) as ex:
+    except (DockerBuildException, DockerBuildIOError) as ex:
         log.error("Build failed due to error : {}".format(ex))
         return 1
 
