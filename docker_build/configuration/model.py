@@ -113,6 +113,10 @@ class BuildConfig(object):
     def config(self):
         return self._config
 
+    @property
+    def variables(self):
+        return self._variables
+
     @staticmethod
     def _parse(config):
 

@@ -223,7 +223,7 @@ def _copy(docker_client, container_id, source, destination):
     )
 
 
-def _run_command(docker_client, container_id, command, args=None, show_logs=False):
+def _run_command(docker_client, container_id, command, variables=None, show_logs=False):
     """
     Runs the given command in the container
     """
@@ -268,10 +268,21 @@ def _run_command(docker_client, container_id, command, args=None, show_logs=Fals
             )
 
     # the list of variables that will be used during the execution of each command
-    environment_variables = [
-        "export {name}={value}".format(name=name, value=args[name])
-        for name in args or {}
-    ]
+    environment_variables = []
+
+    for name in variables or {}:
+        # can only convert strings and numbers for the time being. Dictionaries and Lists will be
+        # ignored
+        if isinstance(variables[name], dict) or isinstance(variables[name], list):
+            log.info(
+                "Variable {!r} will be ignored as it cannot be translated to a linux environment "
+                "variable".format(name)
+            )
+
+        else:
+            environment_variables.append(
+                "export {name}={value}".format(name=name, value=variables[name])
+            )
 
     # the list of instructions to execute against the container
     instructions = command if isinstance(command, types.ListType) else [command]
@@ -378,12 +389,13 @@ def _copy_build_context(docker_client, container_id, step_config):
     return files_copied
 
 
-def _build(docker_client, args, build_config, step_config, from_image, should_remove_container):
+def _build(
+        docker_client, variables, build_config, step_config, from_image, should_remove_container):
     """
     Builds the image for the given step
 
     :param docker_client: The Docker Client that is being used to send commands to the Docker Daemon
-    :param args: The list of args that are known for the build
+    :param variables: The list of variables that are known for the build
     :param build_config: The configurations of the entire build
     :param step_config: The configurations of the step being build with this build process
     :param from_image: The identifier or tag of the image to be used as the base for the image being
@@ -394,7 +406,7 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
     :returns: The identifier of the image that was created
 
     :type docker_client: docker.Client
-    :type args: dict
+    :type variables: dict
     :type build_config: dict
     :type step_config: dict
     :type from_image: str
@@ -430,7 +442,7 @@ def _build(docker_client, args, build_config, step_config, from_image, should_re
                 docker_client,
                 container_id,
                 step_config["RUN"],
-                args=args,
+                variables=variables,
                 show_logs=True
             )
 
@@ -616,7 +628,7 @@ def main(argv=None):
         for step_config in build_config.config["STEPS"]:
             from_image = _build(
                 docker_client,
-                build_args,
+                build_config.variables,
                 build_config.config,
                 step_config,
                 from_image,
