@@ -578,8 +578,8 @@ def main(argv=None):
             log.setLevel(logging.DEBUG)
 
         # load the configuration file
-        config_file_loader = MainConfigFileLoader(command_line_args.main_config_file_path)
-        main_config = MainConfig(config_file_loader.load().content)
+        config_file = MainConfigFileLoader(command_line_args.main_config_file_path).load()
+        main_config = MainConfig(config_file.content if config_file else None)
 
         # load all the build arguments for the build process
         build_args = dict(
