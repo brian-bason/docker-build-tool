@@ -609,7 +609,7 @@ def main(argv=None):
             build_args
         )
 
-        docker_client = docker.from_env(assert_hostname=False)
+        docker_client = docker.from_env(assert_hostname=False, version="auto")
 
         # determine from which image to start
         if "FROM" not in build_config.config:

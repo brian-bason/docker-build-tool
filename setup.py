@@ -29,9 +29,9 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-        'docker-py>=1.8,<2.0',
-        'pyYAML>=3.11,<4.0',
-        'enum34>=1.1.6'
+        'docker-py~=1.10',
+        'pyYAML~=3.11',
+        'enum34~=1.1'
     ],
 
     # List additional groups of dependencies here (e.g. development
