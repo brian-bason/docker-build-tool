@@ -17,7 +17,10 @@ import types
 import os
 import time
 
-from docker import errors
+from docker.errors import \
+    APIError, \
+    DockerException, \
+    NotFound
 from docker_build import __version__
 from docker_build.exception import \
     DockerBuildException, \
@@ -36,7 +39,9 @@ from docker_build.utils.argparser import \
     PutAction, \
     parse_key_value_option
 from docker_build.utils.logger import ConsoleLogger
-from requests.exceptions import RequestException
+from requests.exceptions import \
+    RequestException, \
+    ConnectionError
 
 
 # the logger for the docker build tool
@@ -70,7 +75,7 @@ def _inspect_image(docker_client, image):
 
     try:
         details = docker_client.inspect_image(image)
-    except errors.NotFound:
+    except NotFound:
         pass
 
     return details
@@ -84,7 +89,7 @@ def _inspect_container(docker_client, container):
 
     try:
         details = docker_client.inspect_container(container)
-    except errors.NotFound:
+    except NotFound:
         pass
 
     return details
@@ -146,7 +151,7 @@ def _create_container(docker_client, image):
         # create the container that will be used to run the details for the image
         try:
             return docker_client.create_container(**params)
-        except errors.NotFound:
+        except NotFound:
             if not remote_download_tried:
                 log.info("Image {!r} not found locally, trying remote registry".format(image))
                 _pull_image(docker_client, image)
@@ -645,11 +650,17 @@ def main(argv=None):
         log.info("Docker Build shutdown by user")
         return 130
 
-    except RequestException:
+    except ConnectionError:
         log.error("Cannot connect to the Docker daemon. Is the docker daemon running on this host?")
         return 1
 
-    except (DockerBuildException, DockerBuildIOError) as ex:
+    except APIError as ex:
+        log.error("Build failed due to error : {}".format(ex.explanation))
+        return 1
+
+    except (
+            RequestException, DockerException, DockerBuildException, DockerBuildIOError
+    ) as ex:
         log.error("Build failed due to error : {}".format(ex))
         return 1
 

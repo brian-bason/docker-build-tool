@@ -2,7 +2,7 @@ from logging import StreamHandler, Formatter
 import logging
 
 __author__ = "Brian Bason"
-__version__ = "0.11.1"
+__version__ = "0.11.2"
 
 # create the default handler
 default_handler = StreamHandler()
