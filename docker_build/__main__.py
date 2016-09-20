@@ -286,7 +286,7 @@ def _run_command(docker_client, container_id, command, variables=None, show_logs
 
         else:
             environment_variables.append(
-                "export {name}={value}".format(name=name, value=variables[name])
+                "export {name}=\"{value}\"".format(name=name, value=variables[name])
             )
 
     # the list of instructions to execute against the container
