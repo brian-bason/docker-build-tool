@@ -11,7 +11,7 @@ from exception import \
 FUNCTIONS = {
     "lower": lambda value: str(value).lower(),
     "upper": lambda value: str(value).upper(),
-    "capitalise": lambda value: str(value).capitalize()
+    "capitalise": lambda value: str(value).title()
 }
 
 
