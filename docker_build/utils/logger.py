@@ -1,7 +1,7 @@
 import logging
 
 
-class ConsoleLogger():
+class ConsoleLogger(object):
     """
     Prints the given log messages to a simulated console. What this means is that the messages are
     logged without any dates or other log information.

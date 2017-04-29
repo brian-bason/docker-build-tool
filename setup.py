@@ -29,7 +29,7 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
-        'docker-py~=1.10',
+        'docker~=2.0',
         'pyYAML~=3.11',
         'enum34~=1.1'
     ],
