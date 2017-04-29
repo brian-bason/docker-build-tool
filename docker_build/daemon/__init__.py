@@ -318,7 +318,8 @@ def run_command(container, command, variables=None, show_logs=False):
                 "-c",
                 "; ".join(["set -e"] + variable_list + instruction_list)
             ],
-            user="root"
+            user="root",
+            tty=True
         )
 
         stream = container.client.api.exec_start(
