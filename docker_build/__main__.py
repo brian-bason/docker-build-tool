@@ -122,7 +122,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
 
         # create the container that will be used to run the details for the image
         log.info("Starting new container from {!r}".format(from_image))
-        container = create_container(from_image)
+        container = create_container(from_image, volumes=step_config.get("VOLUMES", []))
 
         # determine if there is a build context specified
         build_context_populated = _copy_build_context(container, step_config)
