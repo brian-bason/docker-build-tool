@@ -113,6 +113,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
     :type step_config: dict
     :type from_image: str
     :type should_remove_container: bool
+    
     :rtype: str
     """
     container = None
@@ -193,8 +194,9 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
 
         # if a container was created remove it to clean up
         if container and should_remove_container:
-            log.info("Cleaning up container")
+            log.info("Removing created container")
             remove_container(container)
+            log.info("Successfully removed container")
 
 
 def main(argv=None):

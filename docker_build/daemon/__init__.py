@@ -49,38 +49,17 @@ def _parse_config(configs, parsed_configs, configuration_option):
         )
 
 
-# def inspect_image(docker_client, image):
-#     """
-#     Inspect the details of the image returning back the full details of that image
-#     """
-#     details = None
-#
-#     try:
-#         details = docker_client.inspect_image(image)
-#     except NotFound:
-#         pass
-#
-#     return details
-
-
-# def inspect_container(docker_client, container):
-#     """
-#     Inspect the details of the container returning back the full details of that container
-#     """
-#     details = None
-#
-#     try:
-#         details = docker_client.inspect_container(container)
-#     except NotFound:
-#         pass
-#
-#     return details
-
-def _get_docker_image_name_parts(image_name):
+def _get_docker_image_name_parts(name):
     """
     Gets the parts of the image name. The name is split into two parts, the repository and the tag
+    
+    :param name: The full name of the image
+    :return: The repository and tag for the given image name
+    
+    :type name: str
+    :rtype: tuple[str, str]
     """
-    image_name_parts = image_name.split(":")
+    image_name_parts = name.split(":")
     return (
         image_name_parts[0],
         image_name_parts[1] if len(image_name_parts) > 1 else "latest"
@@ -90,6 +69,12 @@ def _get_docker_image_name_parts(image_name):
 def get_image(name):
     """
     Gets the Docker Image from the local Docker Registry
+    
+    :param name: The full name of the image
+    :return: The image for the given image name
+    
+    :type name: str
+    :rtype: docker.images.Image
     """
     return docker_client.images.get(name)
 
@@ -97,6 +82,10 @@ def get_image(name):
 def pull_image(name):
     """
     Pulls the Docker Image from the remote Docker Registry
+    
+    :param name: The full name of the image
+    
+    :type name: str
     """
     progress_details = {}
     download_complete = False
@@ -161,7 +150,7 @@ def pull_image(name):
                     # message are removed before printing the new one
                     stdout.write("\r{}".format(" " * 100))
                     stdout.write(
-                        "\rDownloaded {} of {} images, image download/extracting {}% complete"
+                        "\rDownloaded {} of {} images, image download/extract {}% complete"
                         .format(
                             completed_images,
                             total_images,
@@ -177,23 +166,30 @@ def pull_image(name):
                     log.info(detail["status"])
 
 
-def create_container(image):
+def create_container(image_name):
     """
     Create a container that will be used to execute the commands and create the new required image.
     The image will be created and started.
+    
+    :param image_name: The full name of the image that is to be used to create the container
+    :return: The container that was created
+    
+    :type image_name: str
+    :rtype: docker.containers.Container
     """
+
     # the list of parameters that will be passed to the docker command
     params = {
         "tty": True,
         "detach": True,
         "command": "/bin/sh",
-        "image": image
+        "image": image_name
     }
 
     # if the image that the container is being started from has an entry point overwrite it to clear
     # the entry point
     try:
-        details = get_image(image).attrs
+        details = get_image(image_name).attrs
     except ImageNotFound:
         details = None
 
@@ -208,12 +204,12 @@ def create_container(image):
             if not remote_download_tried:
                 log.info(
                     "Image {!r} not found locally, trying to pull image from remote registry"
-                    .format(image)
+                    .format(image_name)
                 )
-                pull_image(image)
+                pull_image(image_name)
                 return create_container_with_auto_pull(True)
             else:
-                raise DockerImageNotFound("Image {!r} could not be found".format(image))
+                raise DockerImageNotFound("Image {!r} could not be found".format(image_name))
 
     # create the container
     container = create_container_with_auto_pull()
@@ -221,6 +217,7 @@ def create_container(image):
     # confirm what this should be mapped to
     if "Warnings" in container.attrs and container.attrs["Warnings"]:
         log.warn("Created container contains warnings {!r}".format(container["Warnings"]))
+
     # start the container
     container.start()
 
@@ -230,6 +227,15 @@ def create_container(image):
 def copy(container, source, destination):
     """
     Copies a file or directory from a given local path to the container being used for the build
+    
+    :param container: The container to which the files or directory is to be copied to
+    :param source: The source directory or file that is to be copied
+    :param destination: The directory or file path to which the files are to be copied to. The 
+        destination path is relative to the container
+        
+    :type container: docker.containers.Container
+    :type source: str
+    :type destination: str
     """
 
     log.debug("Copying content from {!r} to container path {!r}".format(source, destination))
@@ -283,6 +289,18 @@ def copy(container, source, destination):
 def run_command(container, command, variables=None, show_logs=False):
     """
     Runs the given command in the container
+    
+    :param container: The container where the command is to be executed
+    :param command: The command that is to be executed
+    :param variables: The variables that are to be set as environment variables when executing the
+        command
+    :param show_logs: True if the logs from the container stdout should be printed to the console
+        False otherwise
+        
+    :type container: docker.containers.Container
+    :type command: str
+    :type variables: dict
+    :type show_logs: bool
     """
 
     def execute_instructions(instruction_list, variable_list, logger):
@@ -353,6 +371,21 @@ def run_command(container, command, variables=None, show_logs=False):
 def commit_image(container, author=None, configs=None, tag=None):
     """
     Commits the made changes in the container into an image.
+    
+    :param container: The container which is to be used to create the image
+    :param author: The name of the user that is to be set as the author of the image
+    :param configs: The list of configurations that are to be used to set the details of the image.
+        The configurations are given as key value pairs
+    :param tag: The name that is to be used to tag the created image
+    
+    :return: The short identifier of the created image
+        
+    :type container: docker.containers.Container
+    :type author: str
+    :type configs: dict
+    :type tag: str
+    
+    :rtype: str
     """
 
     # the list of parameters that will be passed to the docker command
@@ -375,15 +408,19 @@ def commit_image(container, author=None, configs=None, tag=None):
 
     # commit the changes
     image = container.commit(**params)
-    image_id = image.id
 
-    return str(image_id[7:19])
+    return str(image.id[7:19])
 
 
 def remove_container(container):
     """
     Removes the container
+    
+    :param container: The container that is to be removed
+    
+    :type container: docker.containers.Container
     """
+
     # determine if the container is paused first, if it is first un-pause it before trying to remove
     # the container
     if container.status == "paused":
