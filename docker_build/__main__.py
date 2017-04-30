@@ -10,6 +10,7 @@ import sys
 import os
 import time
 
+from os import environ
 from docker.errors import \
     APIError, \
     DockerException
@@ -25,23 +26,20 @@ from docker_build.constants import BUILD_CONTEXT_DST_PATH
 from docker_build.utils.argparser import \
     PutAction, \
     parse_key_value_option
-from docker_build.daemon import \
-    get_image, \
-    create_container, \
-    copy, \
-    run_command, \
-    commit_image, \
-    remove_container
+from docker_build.daemon import DockerAPI
 from requests.exceptions import \
     RequestException, \
     ConnectionError
+
+# list of environment variables accepted by the build tool
+CONNECTION_TIMEOUT = "DOCKER_CONNECTION_TIMEOUT"
 
 
 # the logger for the docker build tool
 log = logging.getLogger("docker_build")
 
 
-def _copy_build_context(container, step_config):
+def _copy_build_context(docker_api, container, step_config):
     """
     Copies the build context to the running container. The build context can be either one or many
     paths that can be copied into the container
@@ -56,7 +54,7 @@ def _copy_build_context(container, step_config):
 
         if isinstance(step_config["BUILDCONTEXT"], str):
 
-            copy(
+            docker_api.copy(
                 container,
                 step_config["BUILDCONTEXT"],
                 os.path.join(BUILD_CONTEXT_DST_PATH, "")
@@ -82,7 +80,7 @@ def _copy_build_context(container, step_config):
                         )
                     )
 
-                copy(container, copy_details["SRC"], dst)
+                docker_api.copy(container, copy_details["SRC"], dst)
 
         else:
 
@@ -94,10 +92,11 @@ def _copy_build_context(container, step_config):
     return files_copied
 
 
-def _build(variables, build_config, step_config, from_image, should_remove_container):
+def _build(docker_api, variables, build_config, step_config, from_image, should_remove_container):
     """
     Builds the image for the given step
 
+    :param docker_api: The api interface that is to be used to connect to the docker daemon
     :param variables: The list of variables that are known for the build
     :param build_config: The configurations of the entire build
     :param step_config: The configurations of the step being build with this build process
@@ -122,16 +121,16 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
 
         # create the container that will be used to run the details for the image
         log.info("Starting new container from {!r}".format(from_image))
-        container = create_container(from_image)
+        container = docker_api.create_container(from_image)
 
         # determine if there is a build context specified
-        build_context_populated = _copy_build_context(container, step_config)
+        build_context_populated = _copy_build_context(docker_api, container, step_config)
 
         # copy over any files that are required if any specified
         if "COPY" in step_config:
             log.info("Copying folders or files to container")
             for copy_details in step_config["COPY"]:
-                copy(
+                docker_api.copy(
                     container,
                     copy_details["SRC"],
                     copy_details["DST"]
@@ -140,7 +139,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
         # execute the commands to make the necessary changes
         if "RUN" in step_config:
             log.info("Making necessary changes to the container")
-            run_command(
+            docker_api.run_command(
                 container,
                 step_config["RUN"],
                 variables=variables,
@@ -150,7 +149,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
         # clean up the build context if one was created
         if build_context_populated:
             log.info("Cleaning up container from build context")
-            run_command(
+            docker_api.run_command(
                 container,
                 "rm -rf {dst}".format(dst=BUILD_CONTEXT_DST_PATH)
             )
@@ -162,7 +161,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
         is_last_build_step = step_config == build_config["STEPS"][-1]
 
         # get the configs of the image that was used as the base image
-        image = get_image(from_image)
+        image = docker_api.get_image(from_image)
         image_configs = image.attrs["Config"]
 
         # build the configuration that will be set for the image being created
@@ -178,7 +177,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
         if "ENTRYPOINT" not in configs:
             configs["ENTRYPOINT"] = image_configs["Entrypoint"]
 
-        image_id = commit_image(
+        image_id = docker_api.commit_image(
             container,
             author=build_config["MAINTAINER"] if "MAINTAINER" in build_config else None,
             configs=configs,
@@ -195,7 +194,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
         # if a container was created remove it to clean up
         if container and should_remove_container:
             log.info("Removing created container")
-            remove_container(container)
+            docker_api.remove_container(container)
             log.info("Successfully removed container")
 
 
@@ -244,6 +243,15 @@ def main(argv=None):
         help="If specified the tag value defined in the build file will be overwritten. The tag "
              "is used to commit the final image that is generated by the build tool. Either the "
              "TAG command or the tag option must be specified"
+    )
+    parser.add_argument(
+        "--connection-timeout",
+        dest="connection_timeout",
+        type=int,
+        default=environ.get(CONNECTION_TIMEOUT, 60),
+        help="The maximum amount of seconds to wait before the connection to the docker daemon "
+             "times out. This option can also be set with the use of the environment variable {}"
+             .format(CONNECTION_TIMEOUT)
     )
     parser.add_argument(
         "--keep",
@@ -312,9 +320,13 @@ def main(argv=None):
         # build file itself
         os.chdir(os.path.dirname(command_line_args.build_config_file_path) or ".")
 
+        # create the client to the API
+        docker_api = DockerAPI(connection_timeout=command_line_args.connection_timeout)
+
         # go through the steps to create the necessary images
         for step_config in build_config.config["STEPS"]:
             from_image = _build(
+                docker_api,
                 build_config.variables,
                 build_config.config,
                 step_config,
