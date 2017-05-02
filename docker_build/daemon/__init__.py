@@ -232,7 +232,7 @@ class DockerAPI(object):
         }
 
         # determine if the image needs to be pulled from the remote repository
-        if not self.get_image(image_name) or should_ignore_cache:
+        if not self._image_exists(image_name) or should_ignore_cache:
 
             self._log.info(
                 "{}, trying to pull image from remote registry".format(
