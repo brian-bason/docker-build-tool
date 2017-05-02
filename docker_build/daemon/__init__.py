@@ -182,15 +182,19 @@ class DockerAPI(object):
                             print()
                         self._log.info(detail["status"])
 
-    def create_container(self, image_name):
+    def create_container(self, image_name, volumes=None):
         """
         Create a container that will be used to execute the commands and create the new required
         image. The image will be created and started.
         
         :param image_name: The full name of the image that is to be used to create the container
+        :param volumes: The volumes that are to be mounted for the container
+        
         :return: The container that was created
         
         :type image_name: str
+        :type volumes: list[str]
+        
         :rtype: docker.containers.Container
         """
 
@@ -199,7 +203,8 @@ class DockerAPI(object):
             "tty": True,
             "detach": True,
             "command": "/bin/sh",
-            "image": image_name
+            "image": image_name,
+            "volumes": volumes
         }
 
         # if the image that the container is being started from has an entry point overwrite it to
