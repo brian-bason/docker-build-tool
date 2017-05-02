@@ -83,6 +83,24 @@ class DockerAPI(object):
             image_name_parts[1] if len(image_name_parts) > 1 else "latest"
         )
 
+    def _image_exists(self, name):
+        """
+        Determines if an image exists in the local cache
+        
+        :param name: The full name of the image
+        
+        :return: True if the image is found in the local cache false otherwise
+        
+        :type name: str
+        
+        :rtype: bool
+        """
+        try:
+            self.get_image(name)
+            return True
+        except ImageNotFound:
+            return False
+
     def get_image(self, name):
         """
         Gets the Docker Image from the local Docker Registry
@@ -182,18 +200,24 @@ class DockerAPI(object):
                             print()
                         self._log.info(detail["status"])
 
-    def create_container(self, image_name, volumes=None):
+        # return the pulled image
+        return self.get_image(name)
+
+    def create_container(self, image_name, volumes=None, should_ignore_cache=False):
         """
         Create a container that will be used to execute the commands and create the new required
         image. The image will be created and started.
         
         :param image_name: The full name of the image that is to be used to create the container
         :param volumes: The volumes that are to be mounted for the container
+        :param should_ignore_cache: Determines if the local cache should be ignored when checking if
+            the base image exists
         
         :return: The container that was created
         
         :type image_name: str
         :type volumes: list[str]
+        :type should_ignore_cache: bool
         
         :rtype: docker.containers.Container
         """
@@ -207,33 +231,31 @@ class DockerAPI(object):
             "volumes": volumes
         }
 
+        # determine if the image needs to be pulled from the remote repository
+        if not self.get_image(image_name) or should_ignore_cache:
+
+            self._log.info(
+                "{}, trying to pull image from remote registry".format(
+                    "Requested to ignore local cache" if should_ignore_cache else
+                    "Image {!r} not found locally".format(image_name)
+                )
+            )
+
+            try:
+                image = self.pull_image(image_name)
+            except ImageNotFound:
+                raise DockerImageNotFound("Image {!r} could not be found".format(image_name))
+
+        else:
+            image = self.get_image(image_name)
+
         # if the image that the container is being started from has an entry point overwrite it to
         # clear the entry point
-        try:
-            details = self.get_image(image_name).attrs
-        except ImageNotFound:
-            details = None
-
-        if details and details["Config"]["Entrypoint"]:
+        if image.attrs.get("Config", {}).get("Entrypoint"):
             params["entrypoint"] = []
 
-        def create_container_with_auto_pull(remote_download_tried=False):
-            # create the container that will be used to run the details for the image
-            try:
-                return self._client.containers.create(**params)
-            except ImageNotFound:
-                if not remote_download_tried:
-                    self._log.info(
-                        "Image {!r} not found locally, trying to pull image from remote registry"
-                        .format(image_name)
-                    )
-                    self.pull_image(image_name)
-                    return create_container_with_auto_pull(True)
-                else:
-                    raise DockerImageNotFound("Image {!r} could not be found".format(image_name))
-
         # create the container
-        container = create_container_with_auto_pull()
+        container = self._client.containers.create(**params)
 
         # confirm what this should be mapped to
         if "Warnings" in container.attrs and container.attrs["Warnings"]:

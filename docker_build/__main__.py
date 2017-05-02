@@ -33,6 +33,7 @@ from requests.exceptions import \
 
 # list of environment variables accepted by the build tool
 CONNECTION_TIMEOUT = "DOCKER_CONNECTION_TIMEOUT"
+IGNORE_CACHE = "DOCKER_BUILD_IGNORE_CACHE"
 
 
 # the logger for the docker build tool
@@ -92,7 +93,9 @@ def _copy_build_context(docker_api, container, step_config):
     return files_copied
 
 
-def _build(docker_api, variables, build_config, step_config, from_image, should_remove_container):
+def _build(
+        docker_api, variables, build_config, step_config, from_image, should_ignore_cache,
+        should_remove_container):
     """
     Builds the image for the given step
 
@@ -101,9 +104,11 @@ def _build(docker_api, variables, build_config, step_config, from_image, should_
     :param build_config: The configurations of the entire build
     :param step_config: The configurations of the step being build with this build process
     :param from_image: The identifier or tag of the image to be used as the base for the image being
-                       created
+        created
+    :param should_ignore_cache: Determines if the local cache should be ignored when checking if the
+        base image exists
     :param should_remove_container: Indicates if the container should be removed on success or
-                                    failure build
+        failure build
 
     :returns: The identifier of the image that was created
 
@@ -119,9 +124,17 @@ def _build(docker_api, variables, build_config, step_config, from_image, should_
 
     try:
 
+        # determine which build step is being executed in the build process
+        is_first_build_step = step_config == build_config["STEPS"][0]
+        is_last_build_step = step_config == build_config["STEPS"][-1]
+
         # create the container that will be used to run the details for the image
         log.info("Starting new container from {!r}".format(from_image))
-        container = docker_api.create_container(from_image, volumes=step_config.get("VOLUMES", []))
+        container = docker_api.create_container(
+            from_image,
+            volumes=step_config.get("VOLUMES", []),
+            should_ignore_cache=is_first_build_step and should_ignore_cache
+        )
 
         # determine if there is a build context specified
         build_context_populated = _copy_build_context(docker_api, container, step_config)
@@ -156,9 +169,6 @@ def _build(docker_api, variables, build_config, step_config, from_image, should_
 
         # commit the change done to the container
         log.info("Creating image with container changes")
-
-        # determine if it is the last build step in the process
-        is_last_build_step = step_config == build_config["STEPS"][-1]
 
         # get the configs of the image that was used as the base image
         image = docker_api.get_image(from_image)
@@ -248,10 +258,22 @@ def main(argv=None):
         "--connection-timeout",
         dest="connection_timeout",
         type=int,
-        default=environ.get(CONNECTION_TIMEOUT, 60),
+        default=int(environ.get(CONNECTION_TIMEOUT, 60)),
         help="The maximum amount of seconds to wait before the connection to the docker daemon "
              "times out. This option can also be set with the use of the environment variable {}"
              .format(CONNECTION_TIMEOUT)
+    )
+    parser.add_argument(
+        "--ignore-cache",
+        dest="ignore_cache",
+        action="store_true",
+        default=True if environ.get(IGNORE_CACHE, "0") == "1" else False,
+        help="Determines if the local cache of docker images should be ignored when checking for "
+             "the base image that is required by the build. If the option is turned on the remote "
+             "repository will always be checked for an updated copy of the image even if it exists "
+             "in the local cache. This option can also be set with the use of the environment "
+             "variable {}"
+             .format(IGNORE_CACHE)
     )
     parser.add_argument(
         "--keep",
@@ -331,6 +353,7 @@ def main(argv=None):
                 build_config.config,
                 step_config,
                 from_image,
+                command_line_args.ignore_cache,
                 not command_line_args.keep_containers
             )
 
