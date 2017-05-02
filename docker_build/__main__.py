@@ -166,7 +166,7 @@ def _build(variables, build_config, step_config, from_image, should_remove_conta
         image_configs = image.attrs["Config"]
 
         # build the configuration that will be set for the image being created
-        configs = step_config["CONFIG"] if "CONFIG" in step_config else {}
+        configs = step_config.get("CONFIG", {})
 
         # if the command and entry point are not being over written by a specific configuration of
         # the new image being created set the command and / or entry point of the from image. This
