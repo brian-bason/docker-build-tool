@@ -23,7 +23,7 @@ from docker_build.daemon import \
 
 
 __author__ = "Brian Bason"
-__version__ = "0.13.0.dev0"
+__version__ = "0.13.0"
 
 # list of application defaults
 DEFAULT_KEEP_CONTAINERS = False
