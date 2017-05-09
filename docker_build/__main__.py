@@ -12,8 +12,9 @@ import time
 from docker_build import \
     initialise_logging, \
     log, \
-    build
-from docker_build import __version__
+    build,\
+    __version__, \
+    DEFAULT_KEEP_CONTAINERS
 from docker_build.exception import \
     DockerBuildException, \
     DockerBuildIOError
