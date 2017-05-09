@@ -13,6 +13,7 @@ import types
 import os
 import logging
 
+from os import environ
 from sys import stdout
 from docker.errors import \
     APIError, \
@@ -26,6 +27,14 @@ from docker_build.exception import \
 from docker_build.daemon.catalog import Configuration
 from docker_build.utils.logger import ConsoleLogger
 
+# list of environment variables accepted by the build tool
+ENV_CONNECTION_TIMEOUT = "DOCKER_CONNECTION_TIMEOUT"
+ENV_IGNORE_CACHE = "DOCKER_BUILD_IGNORE_CACHE"
+
+# list of docker daemon defaults
+DEFAULT_DOCKER_CONNECTION_TIMEOUT = int(environ.get(ENV_CONNECTION_TIMEOUT, 60))
+DEFAULT_DOCKER_IGNORE_CACHE = True if environ.get(ENV_IGNORE_CACHE, "0") == "1" else False
+
 
 class DockerAPI(object):
     """
@@ -37,7 +46,7 @@ class DockerAPI(object):
     :type connection_timeout: int
     """
 
-    def __init__(self, connection_timeout=60):
+    def __init__(self, connection_timeout=DEFAULT_DOCKER_CONNECTION_TIMEOUT):
 
         if connection_timeout < 1:
             raise ValueError("Connection timeout must be a greater than zero")
@@ -203,7 +212,8 @@ class DockerAPI(object):
         # return the pulled image
         return self.get_image(name)
 
-    def create_container(self, image_name, volumes=None, should_ignore_cache=False):
+    def create_container(
+            self, image_name, volumes=None, should_ignore_cache=DEFAULT_DOCKER_IGNORE_CACHE):
         """
         Create a container that will be used to execute the commands and create the new required
         image. The image will be created and started.
