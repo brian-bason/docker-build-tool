@@ -23,7 +23,7 @@ from docker_build.daemon import \
 
 
 __author__ = "Brian Bason"
-__version__ = "0.13.1"
+__version__ = "0.13.2.dev0"
 
 # list of application defaults
 DEFAULT_KEEP_CONTAINERS = False
@@ -236,6 +236,11 @@ def build(build_config_file_path, build_arguments=None, **kwargs):
     :raises docker_build.exception.DockerBuildException: Raised if any operations to the docker 
         daemon fail to be processed due to some error in the request
     """
+
+    # keep track of the working directory before the build commenced so that once the build is
+    # finished the same working direcotry can be restored
+    initial_working_directory = os.getcwd()
+
     try:
 
         config_file_path = kwargs.get("config_file_path")
@@ -307,6 +312,10 @@ def build(build_config_file_path, build_arguments=None, **kwargs):
                 ex.explanation if isinstance(ex, APIError) else ex
             )
         )
+
+    finally:
+        # change to the initial working directory
+        os.chdir(initial_working_directory)
 
 
 def initialise_logging():
